@@ -1,4 +1,5 @@
 using System.Text;
+using Serilog;
 using BankTask.Api.Filters;
 using BankTask.Api.Middleware;
 using BankTask.Application.Interfaces.Repositories;
@@ -15,6 +16,12 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog((context, configuration) =>
+{
+    configuration
+        .MinimumLevel.Information()
+        .WriteTo.Console();
+});
 
 
 // Connection Strings
