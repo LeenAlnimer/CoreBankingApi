@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Security.Cryptography;
+using System.Text.Json;
 using BankTask.Application.DTOs.Authentication;
 using BankTask.Application.DTOs.Users;
 using BankTask.Application.Interfaces.Repositories;
@@ -12,6 +13,7 @@ namespace BankTask.Application.Services;
 public class AuthenticationService : IAuthenticationService
 {
     private readonly IUserRepository _userRepository;
+    private readonly IRefreshTokenRepository _refreshTokenRepository;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
     private readonly IAuditLogRepository _auditLogRepository;
@@ -19,12 +21,14 @@ public class AuthenticationService : IAuthenticationService
 
     public AuthenticationService(
         IUserRepository userRepository,
+        IRefreshTokenRepository refreshTokenRepository,
         IPasswordHasher passwordHasher,
         IJwtService jwtService,
         IAuditLogRepository auditLogRepository,
         IHttpContextAccessor httpContextAccessor)
     {
         _userRepository = userRepository;
+        _refreshTokenRepository = refreshTokenRepository;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _auditLogRepository = auditLogRepository;
@@ -93,6 +97,19 @@ public class AuthenticationService : IAuthenticationService
 
         var accessToken = _jwtService.GenerateToken(user);
 
+        var refreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Token = Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(64)),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            RevokedAt = null,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _refreshTokenRepository.CreateAsync(refreshToken);
+
         await CreateAuditLogAsync(
             action: "USER_LOGGED_IN",
             userId: user.Id,
@@ -101,7 +118,59 @@ public class AuthenticationService : IAuthenticationService
 
         return new LoginResponse
         {
-            AccessToken = accessToken
+            AccessToken = accessToken,
+            RefreshToken = refreshToken.Token
+        };
+    }
+
+    public async Task<LoginResponse> RefreshAsync(
+        RefreshTokenRequest request)
+    {
+        var refreshToken =
+            await _refreshTokenRepository.GetByTokenAsync(
+                request.RefreshToken);
+
+        if (refreshToken is null ||
+            refreshToken.RevokedAt is not null ||
+            refreshToken.ExpiresAt <= DateTime.UtcNow)
+        {
+            throw new BankTask.Application.Exceptions.UnauthorizedException(
+                "AUTH_INVALID_CREDENTIALS");
+        }
+
+        var user =
+            await _userRepository.GetByIdAsync(refreshToken.UserId);
+
+        if (user is null)
+        {
+            throw new BankTask.Application.Exceptions.UnauthorizedException(
+                "AUTH_INVALID_CREDENTIALS");
+        }
+
+        await _refreshTokenRepository.RevokeAsync(
+            refreshToken.Id);
+
+        var newAccessToken =
+            _jwtService.GenerateToken(user);
+
+        var newRefreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Token = Convert.ToBase64String(
+                RandomNumberGenerator.GetBytes(64)),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            RevokedAt = null,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _refreshTokenRepository.CreateAsync(
+            newRefreshToken);
+
+        return new LoginResponse
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken.Token
         };
     }
 

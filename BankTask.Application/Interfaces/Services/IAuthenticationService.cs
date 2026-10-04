@@ -8,4 +8,6 @@ public interface IAuthenticationService
     Task<UserResponse> SignupAsync(SignupRequest request);
 
     Task<LoginResponse> LoginAsync(LoginRequest request);
+
+    Task<LoginResponse> RefreshAsync(RefreshTokenRequest request);
 }
