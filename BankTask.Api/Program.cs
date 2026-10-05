@@ -16,16 +16,16 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.Host.UseSerilog((context, configuration) =>
 {
     configuration
         .MinimumLevel.Information()
-        .WriteTo.Console();
+        .WriteTo.Seq("http://localhost:5341");
 });
 
 
 // Connection Strings
-
 
 var sqlServerConnectionString =
     builder.Configuration.GetConnectionString("SqlServer")
@@ -46,7 +46,6 @@ builder.Services.AddSingleton<IConnectionFactory>(connectionFactory);
 
 // Repositories
 
-
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
@@ -54,16 +53,12 @@ builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 
 
-
 // Security
-
 
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 
 
-
 // JWT Options
-
 
 builder.Services
     .AddOptions<JwtOptions>()
@@ -76,9 +71,7 @@ builder.Services
 builder.Services.AddScoped<IJwtService, JwtService>();
 
 
-
 // JWT Authentication
-
 
 var jwtSecretKey =
     builder.Configuration["Jwt:SecretKey"]
@@ -121,9 +114,7 @@ builder.Services
     });
 
 
-
 // Services
-
 
 builder.Services.AddScoped<IUserService, UserService>();
 
@@ -142,9 +133,7 @@ builder.Services.AddScoped<
     AuditLogService>();
 
 
-
 // Validation
-
 
 builder.Services.AddValidatorsFromAssemblyContaining<
     SignupRequestValidator>();
@@ -154,9 +143,7 @@ builder.Services.AddScoped<ValidationFilter>();
 builder.Services.AddHttpContextAccessor();
 
 
-
 // Controllers
-
 
 builder.Services.AddControllers(options =>
 {
@@ -171,9 +158,7 @@ builder.Services.Configure<ApiBehaviorOptions>(options =>
 builder.Services.AddEndpointsApiExplorer();
 
 
-
 // Swagger
-
 
 builder.Services.AddSwaggerGen(options =>
 {
@@ -201,8 +186,7 @@ builder.Services.AddSwaggerGen(options =>
                         new Microsoft.OpenApi.Models.OpenApiReference
                         {
                             Type =
-                                Microsoft.OpenApi.Models.ReferenceType
-                                    .SecurityScheme,
+                                Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
                             Id = "Bearer"
                         }
                 },
@@ -212,16 +196,12 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 
-
 // Build Application
-
 
 var app = builder.Build();
 
 
-
 // Swagger
-
 
 if (app.Environment.IsDevelopment())
 {
@@ -231,7 +211,6 @@ if (app.Environment.IsDevelopment())
 
 
 // HTTPS
-
 
 app.UseHttpsRedirection();
 
