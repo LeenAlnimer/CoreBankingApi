@@ -26,7 +26,8 @@ The application is planned to support the following features:
 - Database access through repositories
 - Support for multiple database technologies
 - Database-specific connection management
-- Fluent validation 
+- Fluent validation
+- Using Serilog for Logging and seq sink 
 - API documentation through Swagger/OpenAPI
 
 ---
