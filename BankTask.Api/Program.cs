@@ -121,6 +121,10 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<
     IAuthenticationService,
     AuthenticationService>();
+builder.Services.AddHttpClient<
+    IExchangeRateService,
+    ExchangeRateService>();
+
 
 builder.Services.AddScoped<IAccountService, AccountService>();
 
