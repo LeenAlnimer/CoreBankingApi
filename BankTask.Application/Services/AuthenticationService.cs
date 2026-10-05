@@ -1,4 +1,5 @@
 ﻿using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using BankTask.Application.DTOs.Authentication;
 using BankTask.Application.DTOs.Users;
@@ -97,12 +98,13 @@ public class AuthenticationService : IAuthenticationService
 
         var accessToken = _jwtService.GenerateToken(user);
 
+        var rawRefreshToken = GenerateRefreshToken();
+
         var refreshToken = new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            Token = Convert.ToBase64String(
-                RandomNumberGenerator.GetBytes(64)),
+            TokenHash = HashRefreshToken(rawRefreshToken),
             ExpiresAt = DateTime.UtcNow.AddDays(7),
             RevokedAt = null,
             CreatedAt = DateTime.UtcNow
@@ -119,16 +121,19 @@ public class AuthenticationService : IAuthenticationService
         return new LoginResponse
         {
             AccessToken = accessToken,
-            RefreshToken = refreshToken.Token
+            RefreshToken = rawRefreshToken
         };
     }
 
     public async Task<LoginResponse> RefreshAsync(
         RefreshTokenRequest request)
     {
+        var tokenHash =
+            HashRefreshToken(request.RefreshToken);
+
         var refreshToken =
-            await _refreshTokenRepository.GetByTokenAsync(
-                request.RefreshToken);
+            await _refreshTokenRepository.GetByTokenHashAsync(
+                tokenHash);
 
         if (refreshToken is null ||
             refreshToken.RevokedAt is not null ||
@@ -153,12 +158,14 @@ public class AuthenticationService : IAuthenticationService
         var newAccessToken =
             _jwtService.GenerateToken(user);
 
+        var rawNewRefreshToken = GenerateRefreshToken();
+
         var newRefreshToken = new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            Token = Convert.ToBase64String(
-                RandomNumberGenerator.GetBytes(64)),
+            TokenHash = HashRefreshToken(
+                rawNewRefreshToken),
             ExpiresAt = DateTime.UtcNow.AddDays(7),
             RevokedAt = null,
             CreatedAt = DateTime.UtcNow
@@ -170,8 +177,23 @@ public class AuthenticationService : IAuthenticationService
         return new LoginResponse
         {
             AccessToken = newAccessToken,
-            RefreshToken = newRefreshToken.Token
+            RefreshToken = rawNewRefreshToken
         };
+    }
+
+    private static string GenerateRefreshToken()
+    {
+        return Convert.ToBase64String(
+            RandomNumberGenerator.GetBytes(64));
+    }
+
+    private static string HashRefreshToken(string token)
+    {
+        var hash =
+            SHA256.HashData(
+                Encoding.UTF8.GetBytes(token));
+
+        return Convert.ToHexString(hash);
     }
 
     private async Task CreateAuditLogAsync(

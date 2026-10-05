@@ -34,7 +34,7 @@ public class RefreshTokenRepository : IRefreshTokenRepository
             {
                 refreshToken.Id,
                 refreshToken.UserId,
-                refreshToken.Token,
+                refreshToken.TokenHash,
                 refreshToken.ExpiresAt,
                 refreshToken.RevokedAt,
                 refreshToken.CreatedAt
@@ -42,8 +42,8 @@ public class RefreshTokenRepository : IRefreshTokenRepository
             commandType: CommandType.StoredProcedure);
     }
 
-    public async Task<RefreshToken?> GetByTokenAsync(
-        string token)
+    public async Task<RefreshToken?> GetByTokenHashAsync(
+        string tokenHash)
     {
         using var connection = CreateConnection();
 
@@ -51,7 +51,7 @@ public class RefreshTokenRepository : IRefreshTokenRepository
             GetByTokenSp,
             new
             {
-                Token = token
+                TokenHash = tokenHash
             },
             commandType: CommandType.StoredProcedure);
     }

@@ -1,0 +1,13 @@
+CREATE OR ALTER PROCEDURE dbo.RevokeRefreshToken
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE RefreshTokens
+    SET RevokedAt = GETUTCDATE()
+    WHERE Id = @Id;
+
+    SELECT @@ROWCOUNT;
+END;
+GO
