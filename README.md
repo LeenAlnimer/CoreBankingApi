@@ -27,7 +27,8 @@ The application is planned to support the following features:
 - Support for multiple database technologies
 - Database-specific connection management
 - Fluent validation
-- Using Serilog for Logging and seq sink 
+- Using Serilog for Logging and seq sink
+- Hangfire for Email  Service
 - API documentation through Swagger/OpenAPI
 
 ---
