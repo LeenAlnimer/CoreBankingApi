@@ -148,8 +148,14 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAuditLogService,
     AuditLogService>();
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+    options.Configuration =
+        builder.Configuration["Redis:ConnectionString"];
 
-
+    options.InstanceName = "BankTask:";
+});
+builder.Services.AddScoped< ICacheService,RedisCacheService>();
 // Validation
 
 builder.Services.AddValidatorsFromAssemblyContaining<
