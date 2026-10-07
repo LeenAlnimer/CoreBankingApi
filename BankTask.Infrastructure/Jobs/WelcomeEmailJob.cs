@@ -15,8 +15,13 @@ public class WelcomeEmailJob
         string to,
         string userName)
     {
-        await _emailService.SendWelcomeEmailAsync(
+        await _emailService.SendTemplatedEmailAsync(
             to,
-            userName);
+            "Welcome to BankTask",
+            "WelcomeEmail.html",
+            new Dictionary<string, string>
+            {
+                ["{{UserName}}"] = userName
+            });
     }
 }

@@ -1,13 +1,17 @@
-﻿namespace BankTask.Application.Interfaces.Services;
+namespace BankTask.Application.Interfaces.Services;
 
 public interface IEmailService
 {
     Task SendAsync(
         string to,
         string subject,
-        string htmlBody);
+        string htmlBody,
+        CancellationToken cancellationToken = default);
 
-    Task SendWelcomeEmailAsync(
+    Task SendTemplatedEmailAsync(
         string to,
-        string userName);
+        string subject,
+        string templateName,
+        IReadOnlyDictionary<string, string> placeholders,
+        CancellationToken cancellationToken = default);
 }
