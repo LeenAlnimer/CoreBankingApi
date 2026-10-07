@@ -28,7 +28,8 @@ The application is planned to support the following features:
 - Database-specific connection management
 - Fluent validation
 - Using Serilog for Logging and seq sink
-- Hangfire for Email  Service
+- Using  Public API for Exchange  Rate
+- Hangfire for Email  Service and  UserCount
 - Redis Cache
 - API documentation through Swagger/OpenAPI
 
