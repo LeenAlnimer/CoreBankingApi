@@ -29,6 +29,7 @@ The application is planned to support the following features:
 - Fluent validation
 - Using Serilog for Logging and seq sink
 - Hangfire for Email  Service
+- Redis Cache
 - API documentation through Swagger/OpenAPI
 
 ---
