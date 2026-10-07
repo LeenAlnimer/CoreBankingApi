@@ -5,11 +5,12 @@ using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Security;
 using BankTask.Application.Interfaces.Services;
 using BankTask.Application.Services;
-using BankTask.Infrastructure.Services;
 using BankTask.Application.Validators;
 using BankTask.Authentication;
 using BankTask.DBManager;
+using BankTask.Infrastructure.Jobs;
 using BankTask.Infrastructure.Repositories;
+using BankTask.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
 using Hangfire.SqlServer;
@@ -164,7 +165,7 @@ builder.Services.AddValidatorsFromAssemblyContaining<
 builder.Services.AddScoped<ValidationFilter>();
 
 builder.Services.AddHttpContextAccessor();
-
+builder.Services.AddScoped<UserCountJob>();
 
 // Controllers
 
@@ -233,6 +234,14 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHangfireDashboard();
+
+var recurringJobManager =
+    app.Services.GetRequiredService<IRecurringJobManager>();
+
+recurringJobManager.AddOrUpdate<UserCountJob>(
+    "user-count-job",
+    job => job.ExecuteAsync(),
+    "*/30 * * * *");
 // HTTPS
 
 app.UseHttpsRedirection();

@@ -13,6 +13,7 @@ public class UserRepository : IUserRepository
     private const string GetByIdSp = "GetUserById";
     private const string GetByEmailSp = "GetUserByEmail";
     private const string GetAllSp = "GetAllUsers";
+    private const string GetUsersCountSp = "GetUsersCount";
     private const string CreateSp = "CreateUser";
     private const string UpdateSp = "UpdateUser";
     private const string DeleteSp = "DeleteUser";
@@ -51,6 +52,15 @@ public class UserRepository : IUserRepository
 
         return await connection.QueryAsync<User>(
             GetAllSp,
+            commandType: CommandType.StoredProcedure);
+    }
+
+    public async Task<int> GetUsersCountAsync()
+    {
+        using var connection = CreateConnection();
+
+        return await connection.QuerySingleAsync<int>(
+            GetUsersCountSp,
             commandType: CommandType.StoredProcedure);
     }
 
