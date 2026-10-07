@@ -1,19 +1,22 @@
 using System.Text;
-using Serilog;
 using BankTask.Api.Filters;
 using BankTask.Api.Middleware;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Security;
 using BankTask.Application.Interfaces.Services;
 using BankTask.Application.Services;
+using BankTask.Infrastructure.Services;
 using BankTask.Application.Validators;
 using BankTask.Authentication;
 using BankTask.DBManager;
 using BankTask.Infrastructure.Repositories;
 using FluentValidation;
+using Hangfire;
+using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,6 +39,14 @@ var postgreSqlConnectionString =
     builder.Configuration.GetConnectionString("PostgreSQL")
     ?? throw new InvalidOperationException(
         "PostgreSQL connection string not found.");
+// Hangfire
+
+builder.Services.AddHangfire(configuration =>
+{
+    configuration.UseSqlServerStorage(
+        sqlServerConnectionString);
+});
+builder.Services.AddHangfireServer();
 
 var connectionFactory = new ConnectionFactory(
     sqlServerConnectionString,
@@ -51,6 +62,8 @@ builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+builder.Services.AddScoped< IEmailService, EmailService>();
+builder.Services.AddScoped< IBackgroundJobService, HangfireBackgroundJobService>();
 
 
 // Security
@@ -213,7 +226,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-
+app.UseHangfireDashboard();
 // HTTPS
 
 app.UseHttpsRedirection();
