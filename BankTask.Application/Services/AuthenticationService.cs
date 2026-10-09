@@ -19,6 +19,7 @@ public class AuthenticationService : IAuthenticationService
     private readonly IJwtService _jwtService;
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IBackgroundJobService _backgroundJobService;
 
     public AuthenticationService(
         IUserRepository userRepository,
@@ -26,7 +27,8 @@ public class AuthenticationService : IAuthenticationService
         IPasswordHasher passwordHasher,
         IJwtService jwtService,
         IAuditLogRepository auditLogRepository,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IBackgroundJobService backgroundJobService)
     {
         _userRepository = userRepository;
         _refreshTokenRepository = refreshTokenRepository;
@@ -34,6 +36,7 @@ public class AuthenticationService : IAuthenticationService
         _jwtService = jwtService;
         _auditLogRepository = auditLogRepository;
         _httpContextAccessor = httpContextAccessor;
+        _backgroundJobService = backgroundJobService;
     }
 
     public async Task<UserResponse> SignupAsync(SignupRequest request)
@@ -71,6 +74,10 @@ public class AuthenticationService : IAuthenticationService
                 createdUser.Email,
                 createdUser.CreatedAt
             });
+
+        _backgroundJobService.EnqueueWelcomeEmail(
+            createdUser.Email,
+            createdUser.FullName);
 
         return new UserResponse
         {
