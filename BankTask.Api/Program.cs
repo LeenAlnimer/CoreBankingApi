@@ -18,15 +18,19 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using Serilog.Sinks.Network;
 
 var builder = WebApplication.CreateBuilder(args);
+
 
 builder.Host.UseSerilog((context, configuration) =>
 {
     configuration
         .MinimumLevel.Information()
-        .WriteTo.Seq("http://localhost:5341");
+        .WriteTo.Seq("http://localhost:5341")
+        .WriteTo.TCPSink("tcp://localhost:5044");
 });
+
 
 
 // Connection Strings
