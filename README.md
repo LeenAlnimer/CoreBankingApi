@@ -31,6 +31,7 @@ The application is planned to support the following features:
 - Using  Public API for Exchange  Rate
 - Hangfire for Email  Service and  UserCount
 - Redis Cache
+- ELK (ElasticSearch, LogStash , Kibana)
 - API documentation through Swagger/OpenAPI
 
 ---
