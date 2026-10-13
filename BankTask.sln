@@ -15,6 +15,15 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BankTask.Infrastructure", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BankTask.Authentication", "BankTask.Authentication\BankTask.Authentication.csproj", "{716A12B5-062B-4260-B6A4-EC8B4975B5A0}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "ELK", "ELK", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "logstash", "logstash", "{BF62F5DC-7BA8-4399-9B94-FE8ABFC89555}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "pipeline", "pipeline", "{05937D03-9E89-46D9-B484-4E3F65B79425}"
+	ProjectSection(SolutionItems) = preProject
+		logstash.conf = logstash.conf
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -48,6 +57,10 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{BF62F5DC-7BA8-4399-9B94-FE8ABFC89555} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{05937D03-9E89-46D9-B484-4E3F65B79425} = {BF62F5DC-7BA8-4399-9B94-FE8ABFC89555}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {B548A4D0-A2DB-4DFD-9416-32D3F84C2B8A}

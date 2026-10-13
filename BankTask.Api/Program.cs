@@ -67,8 +67,8 @@ builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-builder.Services.AddScoped< IEmailService, EmailService>();
-builder.Services.AddScoped< IBackgroundJobService, HangfireBackgroundJobService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
 
 
 // Security
@@ -160,7 +160,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
 
     options.InstanceName = "BankTask:";
 });
-builder.Services.AddScoped< ICacheService,RedisCacheService>();
+builder.Services.AddScoped<ICacheService, RedisCacheService>();
 // Validation
 
 builder.Services.AddValidatorsFromAssemblyContaining<
