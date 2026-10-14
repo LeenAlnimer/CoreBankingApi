@@ -14,6 +14,7 @@ using BankTask.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
 using Hangfire.SqlServer;
+using BankTask.Api.WebSockets;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -161,6 +162,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.InstanceName = "BankTask:";
 });
 builder.Services.AddScoped<ICacheService, RedisCacheService>();
+builder.Services.AddSingleton<IStockPriceService, StockPriceService>();
 // Validation
 
 builder.Services.AddValidatorsFromAssemblyContaining<
@@ -223,12 +225,12 @@ builder.Services.AddSwaggerGen(options =>
         });
 });
 
-
+builder.Services.AddTransient<StockWebSocketHandler>();
 // Build Application
 
 var app = builder.Build();
-
-
+//Add WebSockets 
+app.UseWebSockets();
 // Swagger
 
 if (app.Environment.IsDevelopment())
@@ -265,7 +267,13 @@ app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseAuthentication();
 
 app.UseAuthorization();
+app.Map("/ws/stocks", async context =>
+{
+    var handler = context.RequestServices
+        .GetRequiredService<StockWebSocketHandler>();
 
+    await handler.HandleAsync(context);
+});
 
 // Controllers
 
