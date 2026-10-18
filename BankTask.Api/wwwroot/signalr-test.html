@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>BankTask SignalR Transaction Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <h2>BankTask SignalR Transaction Test</h2>
+  <p>This page helps you connect to the Transactions Hub and listen for <code>TransactionCreated</code> events.</p>
+
+  <button id="connectBtn">Connect to Hub</button>
+  <button id="diagBtn">Get Connection Diagnostics</button>
+  <pre id="log" style="background:#f6f6f6;padding:10px;border:1px solid #ddd;max-height:400px;overflow:auto;"></pre>
+
+  <!-- Load ASP.NET Core SignalR client (8.x) -->
+  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+  <script>
+    const logEl = document.getElementById('log');
+    function log(...args) {
+      console.log(...args);
+      const text = args.map(a => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ');
+      logEl.textContent = text + '\n' + logEl.textContent;
+    }
+
+    // Verify the SignalR client library loaded
+    const connectBtn = document.getElementById('connectBtn');
+    const diagBtn = document.getElementById('diagBtn');
+
+    let connection = null;
+
+    if (typeof signalR === 'undefined') {
+      // Library failed to load
+      log('ERROR: SignalR client library failed to load. The Connect button is disabled.');
+      connectBtn.disabled = true;
+      diagBtn.disabled = true;
+    }
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        if (typeof signalR === 'undefined') {
+          log('Cannot connect: SignalR client is not available.');
+          return;
+        }
+
+        const token = prompt('Enter your JWT access token (will not be sent to any third party):');
+        if (!token) {
+          log('No token provided, aborting.');
+          return;
+        }
+
+        connection = new signalR.HubConnectionBuilder()
+          .withUrl(window.location.origin + '/hubs/transactions', {
+            accessTokenFactory: () => token
+          })
+          .configureLogging(signalR.LogLevel.Information)
+          .build();
+
+        connection.on('TransactionCreated', payload => {
+          log('Received TransactionCreated event:', payload);
+        });
+
+        connection.onclose(err => {
+          log('Connection closed.', err ? err.toString() : '');
+        });
+
+        await connection.start();
+        window.bankTaskTestConnection = connection;
+        log('Connected. You can now create a transaction via the API.');
+      } catch (err) {
+        log('Connection failed:', err);
+      }
+    });
+
+    document.getElementById('diagBtn').addEventListener('click', async () => {
+      if (!connection) {
+        log('Not connected.');
+        return;
+      }
+
+      try {
+        // Call the diagnostics method on the hub to see the user identifier
+        const result = await connection.invoke('GetConnectionDiagnostics');
+        log('Connection diagnostics:', result);
+      } catch (err) {
+        log('Diagnostics failed:', err);
+      }
+    });
+  </script>
+
+  <h3>Quick instructions</h3>
+  <ol>
+    <li>Open Swagger and either create a user (<code>/api/Auth/signup</code>) or login (<code>/api/Auth/login</code>).</li>
+    <li>Copy the access token from the login response (do not paste it here in any public place).</li>
+    <li>Click <strong>Connect to Hub</strong> and paste the token when prompted.</li>
+    <li>Use the <code>Get Connection Diagnostics</code> button to confirm <code>UserIdentifier</code> matches your user id.</li>
+    <li>Create a Deposit transaction via <code>/api/Transactions</code> using your account id as <code>destinationAccountId</code>.</li>
+    <li>Watch for the <code>TransactionCreated</code> event in the log above.</li>
+  </ol>
+</body>
+</html>
