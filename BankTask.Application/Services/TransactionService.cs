@@ -75,6 +75,29 @@ public class TransactionService : ITransactionService
                 throw new BankTask.Application.Exceptions.NotFoundException(
                     "ACCOUNT_NOT_FOUND");
             }
+            // Verify ownership: source account must belong to the authenticated user.
+            var httpContext = _httpContextAccessor.HttpContext;
+
+            var userIdClaim = httpContext?.User.FindFirst(ClaimTypes.NameIdentifier);
+
+            if (!Guid.TryParse(userIdClaim?.Value, out var authenticatedUserId))
+            {
+                // If we cannot determine the authenticated user id, reject the operation.
+                throw new BankTask.Application.Exceptions.UnauthorizedException(
+                    "USER_ID_REQUIRED");
+            }
+
+            if (sourceAccount.UserId != authenticatedUserId)
+            {
+                // The source account does not belong to the authenticated user.
+                // The application mapping only provides an UnauthorizedException
+                // (mapped to 401) in the existing middleware; there is no
+                // Forbidden/403 exception type. We therefore reject using the
+                // existing UnauthorizedException so the app's exception handling
+                // conventions are preserved.
+                throw new BankTask.Application.Exceptions.UnauthorizedException(
+                    "ACCOUNT_ACCESS_FORBIDDEN");
+            }
         }
 
         if (request.DestinationAccountId.HasValue)
