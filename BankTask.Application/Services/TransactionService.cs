@@ -161,6 +161,8 @@ public class TransactionService : ITransactionService
             Amount = createdTransaction.Amount,
             Currency = createdTransaction.Currency,
             ReferenceNumber = createdTransaction.ReferenceNumber,
+            SourceAccountId = createdTransaction.SourceAccountId,
+            DestinationAccountId = createdTransaction.DestinationAccountId,
             CreatedAt = createdTransaction.CreatedAt
         };
 

@@ -23,6 +23,7 @@ public class ExceptionHandlingMiddleware
     {
         try
         {
+            
             await _next(context);
         }
         catch (AppException ex)
