@@ -2,6 +2,7 @@
 using System.Text;
 using BankTask.Api.Filters;
 using BankTask.Api.Hubs;
+using BankTask.Api.Messaging;
 using BankTask.Api.Middleware;
 using BankTask.Api.Services;
 using BankTask.Api.WebSockets;
@@ -23,6 +24,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Sinks.Network;
+using BankTask.Api.Consumers;
+using BankTask.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +65,32 @@ var connectionFactory = new ConnectionFactory(
 
 builder.Services.AddSingleton<IConnectionFactory>(
     connectionFactory);
+
+// RabbitMQ Configuration
+
+builder.Services.AddSingleton<RabbitMQ.Client.ConnectionFactory>(_ =>
+{
+    var rabbitMqSection =
+        builder.Configuration.GetSection("RabbitMQ");
+
+    return new RabbitMQ.Client.ConnectionFactory
+    {
+        HostName =
+            rabbitMqSection["HostName"] ?? "localhost",
+
+        Port =
+            rabbitMqSection.GetValue<int>("Port", 5672),
+
+        UserName =
+            rabbitMqSection["UserName"] ?? "guest",
+
+        Password =
+            rabbitMqSection["Password"] ?? "guest",
+
+        VirtualHost =
+            rabbitMqSection["VirtualHost"] ?? "/"
+    };
+});
 
 // Repositories
 
@@ -192,6 +221,8 @@ builder.Services.AddSingleton<
 builder.Services.AddScoped<
     ITransactionNotificationService,
     TransactionNotificationService>();
+builder.Services.AddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
+builder.Services.AddHostedService<TransactionCreatedConsumer>();
 
 // Validation
 
@@ -316,7 +347,6 @@ app.Map("/ws/stocks", async context =>
 
 // SignalR endpoint
 
-// Serve the static test page from wwwroot (signalr test helper)
 app.UseStaticFiles();
 
 app.MapHub<TransactionsHub>("/hubs/transactions");
