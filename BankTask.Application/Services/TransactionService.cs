@@ -15,6 +15,7 @@ namespace BankTask.Application.Services;
 public class TransactionService : ITransactionService
 {
     private const string TransactionCreatedQueue = "transaction-created";
+    private const string TransactionEmailQueue = "transaction-email";
 
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
@@ -197,9 +198,28 @@ public class TransactionService : ITransactionService
             RecipientUserIds = recipientUserIds.ToList()
         };
 
+        // Publish the event for SignalR notifications.
         await _rabbitMqPublisher.PublishAsync(
             TransactionCreatedQueue,
             transactionCreatedEvent);
+
+        // Publish a separate event for transaction emails.
+        var transactionEmailEvent = new TransactionEmailEvent
+        {
+            EventId = createdTransaction.EventId,
+            TransactionId = createdTransaction.Id,
+            TransactionType =
+                ((TransactionType)createdTransaction.TransactionType).ToString(),
+            Amount = createdTransaction.Amount,
+            Currency = createdTransaction.Currency,
+            ReferenceNumber = createdTransaction.ReferenceNumber,
+            CreatedAt = createdTransaction.CreatedAt,
+            RecipientUserIds = recipientUserIds.ToList()
+        };
+
+        await _rabbitMqPublisher.PublishAsync(
+            TransactionEmailQueue,
+            transactionEmailEvent);
 
         return TransactionMapper.ToResponse(createdTransaction);
     }

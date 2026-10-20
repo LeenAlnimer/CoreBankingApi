@@ -223,7 +223,7 @@ builder.Services.AddScoped<
     TransactionNotificationService>();
 builder.Services.AddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
 builder.Services.AddHostedService<TransactionCreatedConsumer>();
-
+builder.Services.AddHostedService<TransactionEmailConsumer>();
 // Validation
 
 builder.Services.AddValidatorsFromAssemblyContaining<
