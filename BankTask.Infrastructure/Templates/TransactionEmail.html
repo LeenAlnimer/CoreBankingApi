@@ -1,0 +1,54 @@
+﻿
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transaction Notification</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f4f6f8; font-family:Arial,sans-serif; color:#243047;">
+    <div style="max-width:600px; margin:30px auto; background-color:#ffffff; border-radius:12px; overflow:hidden;">
+        <div style="background-color:#123b63; padding:28px; text-align:center; color:#ffffff;">
+            <h1 style="margin:0; font-size:26px;">BankTask</h1>
+            <p style="margin:10px 0 0;">Transaction Notification</p>
+        </div>
+
+        <div style="padding:30px;">
+            <h2 style="margin-top:0;">Hello {{UserName}},</h2>
+
+            <p>Your transaction has been recorded successfully. Here are the details:</p>
+
+            <table style="width:100%; border-collapse:collapse; margin-top:20px;">
+                <tr>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb;">Transaction type</td>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb; text-align:right;"><strong>{{TransactionType}}</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb;">Amount</td>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb; text-align:right;"><strong>{{Amount}} {{Currency}}</strong></td>
+                </tr>
+                <tr>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb;">Reference number</td>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb; text-align:right;">{{ReferenceNumber}}</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb;">Transaction ID</td>
+                    <td style="padding:12px; border-bottom:1px solid #e5e7eb; text-align:right; word-break:break-all;">{{TransactionId}}</td>
+                </tr>
+                <tr>
+                    <td style="padding:12px;">Date (UTC)</td>
+                    <td style="padding:12px; text-align:right;">{{CreatedAt}}</td>
+                </tr>
+            </table>
+
+            <p style="margin-top:25px;">If you do not recognize this transaction, please contact your bank.</p>
+
+            <p style="margin-bottom:0;">Thank you,<br><strong>BankTask Team</strong></p>
+        </div>
+
+        <div style="padding:16px; background-color:#f4f6f8; text-align:center; font-size:12px; color:#6b7280;">
+            This is an automated notification. Please do not reply to this email.
+        </div>
+    </div>
+</body>
+</html>

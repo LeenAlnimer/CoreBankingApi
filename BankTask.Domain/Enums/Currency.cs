@@ -2,7 +2,7 @@
 
 public enum Currency
 {
-    JOD,
+    JOD,  
     USD,
     EUR
 }

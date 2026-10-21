@@ -1,7 +1,8 @@
 ﻿
 using System.Security.Claims;
 using System.Text.Json;
-using BankTask.Application.DTOs.Notifications;
+using BankTask.Application.Caching;
+using BankTask.Application.Events;
 using BankTask.Application.DTOs.Transactions;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Services;
@@ -9,35 +10,59 @@ using BankTask.Application.Mappers;
 using BankTask.Domain.Entities;
 using BankTask.Domain.Enums;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 
 namespace BankTask.Application.Services;
 
 public class TransactionService : ITransactionService
 {
+    private const string TransactionCreatedQueue = "transaction-created";
+    private const string TransactionEmailQueue = "transaction-email";
+    private const string LargeTransactionAlertQueue = "large-transaction-alert";
+
+    private readonly decimal _largeTransactionThreshold;
+
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
     private readonly IAuditLogRepository _auditLogRepository;
-    private readonly ITransactionNotificationService _notificationService;
+    private readonly IRabbitMqPublisher _rabbitMqPublisher;
+    private readonly ICacheService _cacheService;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public TransactionService(
         ITransactionRepository transactionRepository,
         IAccountRepository accountRepository,
         IAuditLogRepository auditLogRepository,
-        ITransactionNotificationService notificationService,
-        IHttpContextAccessor httpContextAccessor)
+        IRabbitMqPublisher rabbitMqPublisher,
+        ICacheService cacheService,
+        IHttpContextAccessor httpContextAccessor,
+        IConfiguration configuration)
     {
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
         _auditLogRepository = auditLogRepository;
-        _notificationService = notificationService;
+        _rabbitMqPublisher = rabbitMqPublisher;
+        _cacheService = cacheService;
         _httpContextAccessor = httpContextAccessor;
+
+        _largeTransactionThreshold =
+            configuration.GetValue<decimal>(
+                "TransactionAlerts:LargeTransactionThreshold",
+                5000m);
     }
 
     public async Task<TransactionResponse?> GetByIdAsync(Guid id)
     {
-        var transaction =
-            await _transactionRepository.GetByIdAsync(id);
+        var cacheKey = CacheKeys.TransactionById(id);
+        var cachedTransaction =
+            await _cacheService.GetAsync<TransactionResponse>(cacheKey);
+
+        if (cachedTransaction is not null)
+        {
+            return cachedTransaction;
+        }
+
+        var transaction = await _transactionRepository.GetByIdAsync(id);
 
         if (transaction is null)
         {
@@ -45,15 +70,37 @@ public class TransactionService : ITransactionService
                 "TRANSACTION_NOT_FOUND");
         }
 
-        return TransactionMapper.ToResponse(transaction);
+        var response = TransactionMapper.ToResponse(transaction);
+        await _cacheService.SetAsync(
+            cacheKey,
+            response,
+            TimeSpan.FromMinutes(5));
+
+        return response;
     }
 
     public async Task<IEnumerable<TransactionResponse>> GetAllAsync()
     {
-        var transactions =
-            await _transactionRepository.GetAllAsync();
+        var cachedTransactions =
+            await _cacheService.GetAsync<List<TransactionResponse>>(
+                CacheKeys.AllTransactions);
 
-        return transactions.Select(TransactionMapper.ToResponse);
+        if (cachedTransactions is not null)
+        {
+            return cachedTransactions;
+        }
+
+        var transactions = await _transactionRepository.GetAllAsync();
+        var responses = transactions
+            .Select(TransactionMapper.ToResponse)
+            .ToList();
+
+        await _cacheService.SetAsync(
+            CacheKeys.AllTransactions,
+            responses,
+            TimeSpan.FromMinutes(5));
+
+        return responses;
     }
 
     public async Task<TransactionResponse> CreateAsync(
@@ -61,10 +108,16 @@ public class TransactionService : ITransactionService
     {
         ValidateTransaction(request);
 
+        if (request.TransactionType == TransactionType.Transfer
+            && request.SourceAccountId == request.DestinationAccountId)
+        {
+            throw new BankTask.Application.Exceptions.ValidationException(
+                "TRANSFER_ACCOUNTS_MUST_BE_DIFFERENT");
+        }
+
         Account? sourceAccount = null;
         Account? destinationAccount = null;
 
-        // Retrieve the accounts before creating the transaction.
         if (request.SourceAccountId.HasValue)
         {
             sourceAccount = await _accountRepository.GetByIdAsync(
@@ -75,26 +128,20 @@ public class TransactionService : ITransactionService
                 throw new BankTask.Application.Exceptions.NotFoundException(
                     "ACCOUNT_NOT_FOUND");
             }
-            // Verify ownership: source account must belong to the authenticated user.
+
             var httpContext = _httpContextAccessor.HttpContext;
 
-            var userIdClaim = httpContext?.User.FindFirst(ClaimTypes.NameIdentifier);
+            var userIdClaim =
+                httpContext?.User.FindFirst(ClaimTypes.NameIdentifier);
 
             if (!Guid.TryParse(userIdClaim?.Value, out var authenticatedUserId))
             {
-                // If we cannot determine the authenticated user id, reject the operation.
                 throw new BankTask.Application.Exceptions.UnauthorizedException(
                     "USER_ID_REQUIRED");
             }
 
             if (sourceAccount.UserId != authenticatedUserId)
             {
-                // The source account does not belong to the authenticated user.
-                // The application mapping only provides an UnauthorizedException
-                // (mapped to 401) in the existing middleware; there is no
-                // Forbidden/403 exception type. We therefore reject using the
-                // existing UnauthorizedException so the app's exception handling
-                // conventions are preserved.
                 throw new BankTask.Application.Exceptions.UnauthorizedException(
                     "ACCOUNT_ACCESS_FORBIDDEN");
             }
@@ -135,6 +182,18 @@ public class TransactionService : ITransactionService
         var createdTransaction =
             await _transactionRepository.CreateAsync(transaction);
 
+        await _rabbitMqPublisher.PublishAsync(
+            CacheInvalidationEvent.QueueName,
+            new CacheInvalidationEvent
+            {
+                EventId = Guid.NewGuid(),
+                Keys = new List<string>
+                {
+                    CacheKeys.AllTransactions,
+                    CacheKeys.TransactionById(createdTransaction.Id)
+                }
+            });
+
         await CreateAuditLogAsync(
             action: "TRANSACTION_CREATED",
             eventId: createdTransaction.EventId,
@@ -152,19 +211,6 @@ public class TransactionService : ITransactionService
                 createdTransaction.Description,
                 createdTransaction.CreatedAt
             });
-
-        var notification = new TransactionNotificationDto
-        {
-            TransactionId = createdTransaction.Id,
-            TransactionType =
-                ((TransactionType)createdTransaction.TransactionType).ToString(),
-            Amount = createdTransaction.Amount,
-            Currency = createdTransaction.Currency,
-            ReferenceNumber = createdTransaction.ReferenceNumber,
-            SourceAccountId = createdTransaction.SourceAccountId,
-            DestinationAccountId = createdTransaction.DestinationAccountId,
-            CreatedAt = createdTransaction.CreatedAt
-        };
 
         var recipientUserIds = new HashSet<Guid>();
 
@@ -200,11 +246,69 @@ public class TransactionService : ITransactionService
                 break;
         }
 
-        foreach (var userId in recipientUserIds)
+        var transactionTypeName =
+            ((TransactionType)createdTransaction.TransactionType).ToString();
+
+        var transactionCreatedEvent = new TransactionCreatedEvent
         {
-            await _notificationService.NotifyTransactionCreatedAsync(
-                userId,
-                notification);
+            EventId = createdTransaction.EventId,
+            TransactionId = createdTransaction.Id,
+            SourceAccountId = createdTransaction.SourceAccountId,
+            DestinationAccountId = createdTransaction.DestinationAccountId,
+            TransactionType = transactionTypeName,
+            Amount = createdTransaction.Amount,
+            Currency = createdTransaction.Currency,
+            ReferenceNumber = createdTransaction.ReferenceNumber,
+            CreatedAt = createdTransaction.CreatedAt,
+            RecipientUserIds = recipientUserIds.ToList()
+        };
+
+        // Publish the event for regular SignalR notifications.
+        await _rabbitMqPublisher.PublishAsync(
+            TransactionCreatedQueue,
+            transactionCreatedEvent);
+
+        // Publish a separate event for transaction emails.
+        var transactionEmailEvent = new TransactionEmailEvent
+        {
+            EventId = createdTransaction.EventId,
+            TransactionId = createdTransaction.Id,
+            TransactionType = transactionTypeName,
+            Amount = createdTransaction.Amount,
+            Currency = createdTransaction.Currency,
+            ReferenceNumber = createdTransaction.ReferenceNumber,
+            CreatedAt = createdTransaction.CreatedAt,
+            RecipientUserIds = recipientUserIds.ToList()
+        };
+
+        await _rabbitMqPublisher.PublishAsync(
+            TransactionEmailQueue,
+            transactionEmailEvent);
+
+        // Publish a separate alert for large transactions in JOD.
+        if (string.Equals(
+                createdTransaction.Currency,
+                "JOD",
+                StringComparison.OrdinalIgnoreCase)
+            && createdTransaction.Amount >= _largeTransactionThreshold)
+        {
+            var largeTransactionAlertEvent = new LargeTransactionAlertEvent
+            {
+                EventId = Guid.NewGuid(),
+                TransactionId = createdTransaction.Id,
+                SourceAccountId = createdTransaction.SourceAccountId,
+                DestinationAccountId = createdTransaction.DestinationAccountId,
+                TransactionType = transactionTypeName,
+                Amount = createdTransaction.Amount,
+                Currency = createdTransaction.Currency,
+                ReferenceNumber = createdTransaction.ReferenceNumber,
+                CreatedAt = createdTransaction.CreatedAt,
+                RecipientUserIds = recipientUserIds.ToList()
+            };
+
+            await _rabbitMqPublisher.PublishAsync(
+                LargeTransactionAlertQueue,
+                largeTransactionAlertEvent);
         }
 
         return TransactionMapper.ToResponse(createdTransaction);
@@ -222,7 +326,6 @@ public class TransactionService : ITransactionService
         switch (request.TransactionType)
         {
             case TransactionType.Transfer:
-
                 if (request.SourceAccountId is null ||
                     request.DestinationAccountId is null)
                 {
@@ -230,8 +333,7 @@ public class TransactionService : ITransactionService
                         "TRANSFER_ACCOUNTS_REQUIRED");
                 }
 
-                if (request.SourceAccountId ==
-                    request.DestinationAccountId)
+                if (request.SourceAccountId == request.DestinationAccountId)
                 {
                     throw new BankTask.Application.Exceptions.ValidationException(
                         "TRANSFER_ACCOUNTS_MUST_DIFFER");
@@ -240,7 +342,6 @@ public class TransactionService : ITransactionService
                 break;
 
             case TransactionType.Deposit:
-
                 if (request.DestinationAccountId is null)
                 {
                     throw new BankTask.Application.Exceptions.ValidationException(
@@ -250,7 +351,6 @@ public class TransactionService : ITransactionService
                 break;
 
             case TransactionType.Withdrawal:
-
                 if (request.SourceAccountId is null)
                 {
                     throw new BankTask.Application.Exceptions.ValidationException(
@@ -260,7 +360,6 @@ public class TransactionService : ITransactionService
                 break;
 
             default:
-
                 throw new BankTask.Application.Exceptions.ValidationException(
                     "TRANSACTION_TYPE_INVALID");
         }

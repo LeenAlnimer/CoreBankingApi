@@ -13,9 +13,11 @@ public class RedisCacheService : ICacheService
         _cache = cache;
     }
 
-    public async Task<T?> GetAsync<T>(string key)
+    public async Task<T?> GetAsync<T>(
+        string key,
+        CancellationToken cancellationToken = default)
     {
-        var data = await _cache.GetStringAsync(key);
+        var data = await _cache.GetStringAsync(key, cancellationToken);
 
         if (data is null)
         {
@@ -28,7 +30,8 @@ public class RedisCacheService : ICacheService
     public async Task SetAsync<T>(
         string key,
         T value,
-        TimeSpan expiration)
+        TimeSpan expiration,
+        CancellationToken cancellationToken = default)
     {
         var data = JsonSerializer.Serialize(value);
 
@@ -38,11 +41,14 @@ public class RedisCacheService : ICacheService
             new DistributedCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = expiration
-            });
+            },
+            cancellationToken);
     }
 
-    public async Task RemoveAsync(string key)
+    public async Task RemoveAsync(
+        string key,
+        CancellationToken cancellationToken = default)
     {
-        await _cache.RemoveAsync(key);
+        await _cache.RemoveAsync(key, cancellationToken);
     }
 }
