@@ -24,7 +24,6 @@ public class TransactionNotificationService
         Guid userId,
         TransactionNotificationDto notification)
     {
-        // Log the outgoing notification (GUID only, no sensitive data)
         _logger.LogInformation(
             "Sending TransactionCreated notification to user {UserId} for transaction {TransactionId}",
             userId,
@@ -34,6 +33,22 @@ public class TransactionNotificationService
             .User(userId.ToString())
             .SendAsync(
                 "TransactionCreated",
+                notification);
+    }
+
+    public async Task NotifyLargeTransactionAlertAsync(
+        Guid userId,
+        TransactionNotificationDto notification)
+    {
+        _logger.LogInformation(
+            "Sending LargeTransactionAlert notification to user {UserId} for transaction {TransactionId}",
+            userId,
+            notification.TransactionId);
+
+        await _hubContext.Clients
+            .User(userId.ToString())
+            .SendAsync(
+                "LargeTransactionAlert",
                 notification);
     }
 }

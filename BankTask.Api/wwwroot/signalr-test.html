@@ -1,101 +1,594 @@
+
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>BankTask SignalR Transaction Test</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BankTask SignalR Transaction Test</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 30px;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6fb;
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+            color: #172554;
+        }
+
+        .subtitle {
+            color: #64748b;
+            margin-bottom: 24px;
+            line-height: 1.6;
+        }
+
+        .panel {
+            background: #fff;
+            padding: 22px;
+            margin-bottom: 22px;
+            border-radius: 14px;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.05);
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 11px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+            button:hover {
+                background: #1d4ed8;
+            }
+
+            button:disabled {
+                opacity: 0.55;
+                cursor: not-allowed;
+            }
+
+        .secondary {
+            background: #475569;
+        }
+
+            .secondary:hover {
+                background: #334155;
+            }
+
+        #connectionStatus {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: 16px;
+            padding: 8px 12px;
+            border-radius: 20px;
+            background: #f1f5f9;
+            color: #475569;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .status-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #94a3b8;
+        }
+
+        .status-connected .status-dot {
+            background: #16a34a;
+        }
+
+        .status-disconnected .status-dot {
+            background: #dc2626;
+        }
+
+        .section-title {
+            margin-top: 0;
+            margin-bottom: 18px;
+            color: #172554;
+        }
+
+        #notifications {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .empty-state {
+            padding: 30px 15px;
+            text-align: center;
+            color: #64748b;
+            border: 2px dashed #cbd5e1;
+            border-radius: 12px;
+            background: #f8fafc;
+        }
+
+        .notification-card {
+            background: white;
+            border: 1px solid #dbe3ef;
+            border-left: 5px solid #2563eb;
+            border-radius: 12px;
+            padding: 18px;
+            box-shadow: 0 3px 10px rgba(15, 23, 42, 0.04);
+            animation: appear 0.25s ease-out;
+        }
+
+            .notification-card.large-alert {
+                border-left-color: #dc2626;
+                background: #fffafa;
+            }
+
+        .notification-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        .notification-title {
+            margin: 0;
+            font-size: 17px;
+            color: #1e293b;
+        }
+
+        .notification-badge {
+            display: inline-block;
+            padding: 6px 10px;
+            border-radius: 20px;
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .large-alert .notification-badge {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .notification-details {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .detail {
+            min-width: 0;
+            padding: 12px;
+            background: #f8fafc;
+            border-radius: 8px;
+        }
+
+        .detail-label {
+            display: block;
+            margin-bottom: 6px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .detail-value {
+            display: block;
+            color: #1e293b;
+            font-size: 14px;
+            font-weight: 600;
+            overflow-wrap: anywhere;
+        }
+
+        .amount-value {
+            color: #15803d;
+            font-size: 19px;
+        }
+
+        .large-alert .amount-value {
+            color: #b91c1c;
+        }
+
+        .notification-time {
+            margin-top: 14px;
+            color: #64748b;
+            font-size: 12px;
+        }
+
+        .log {
+            background: #0f172a;
+            color: #dbeafe;
+            padding: 14px;
+            border-radius: 9px;
+            max-height: 250px;
+            overflow: auto;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-family: Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .instructions {
+            line-height: 1.9;
+            color: #475569;
+            padding-left: 22px;
+        }
+
+        @keyframes appear {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 14px;
+            }
+
+            .notification-details {
+                grid-template-columns: 1fr;
+            }
+
+            .panel {
+                padding: 16px;
+            }
+        }
+    </style>
 </head>
+
 <body>
-  <h2>BankTask SignalR Transaction Test</h2>
-  <p>This page helps you connect to the Transactions Hub and listen for <code>TransactionCreated</code> events.</p>
+    <main class="container">
+        <h1>BankTask Transaction Notifications</h1>
 
-  <button id="connectBtn">Connect to Hub</button>
-  <button id="diagBtn">Get Connection Diagnostics</button>
-  <pre id="log" style="background:#f6f6f6;padding:10px;border:1px solid #ddd;max-height:400px;overflow:auto;"></pre>
+        <p class="subtitle">
+            Real-time transaction notifications powered by SignalR.
+        </p>
 
-  <!-- Load ASP.NET Core SignalR client (8.x) -->
-  <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
-  <script>
-    const logEl = document.getElementById('log');
-    function log(...args) {
-      console.log(...args);
-      const text = args.map(a => (typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a))).join(' ');
-      logEl.textContent = text + '\n' + logEl.textContent;
-    }
+        <section class="panel">
+            <h2 class="section-title">Connection</h2>
 
-    // Verify the SignalR client library loaded
-    const connectBtn = document.getElementById('connectBtn');
-    const diagBtn = document.getElementById('diagBtn');
+            <div class="actions">
+                <button id="connectBtn">Connect to Hub</button>
 
-    let connection = null;
+                <button id="disconnectBtn" class="secondary" disabled>
+                    Disconnect
+                </button>
 
-    if (typeof signalR === 'undefined') {
-      // Library failed to load
-      log('ERROR: SignalR client library failed to load. The Connect button is disabled.');
-      connectBtn.disabled = true;
-      diagBtn.disabled = true;
-    }
+                <button id="diagBtn" class="secondary" disabled>
+                    Get Connection Diagnostics
+                </button>
+            </div>
 
-    document.getElementById('connectBtn').addEventListener('click', async () => {
-      try {
-        if (typeof signalR === 'undefined') {
-          log('Cannot connect: SignalR client is not available.');
-          return;
+            <div id="connectionStatus" class="status-disconnected">
+                <span class="status-dot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 class="section-title">Received Notifications</h2>
+
+            <div id="notifications">
+                <div id="emptyState" class="empty-state">
+                    No notifications received yet.
+                    <br />
+                    Connect to the Hub and create a transaction through Swagger.
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 class="section-title">Connection Log</h2>
+            <div id="log" class="log">Ready.</div>
+        </section>
+
+        <section class="panel">
+            <h2 class="section-title">Quick Instructions</h2>
+
+            <ol class="instructions">
+                <li>Open Swagger and log in to get your JWT access token.</li>
+                <li>Click <strong>Connect to Hub</strong> and paste the token.</li>
+                <li>Confirm that the connection status says Connected.</li>
+                <li>Create a transaction using the API in Swagger.</li>
+                <li>Check the notification cards above.</li>
+                <li>
+                    Transactions of at least 5000 JOD should also produce
+                    a Large Transaction Alert.
+                </li>
+            </ol>
+        </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@microsoft/signalr@8.0.0/dist/browser/signalr.min.js"></script>
+
+    <script>
+        const connectBtn = document.getElementById("connectBtn");
+        const disconnectBtn = document.getElementById("disconnectBtn");
+        const diagBtn = document.getElementById("diagBtn");
+
+        const statusElement = document.getElementById("connectionStatus");
+        const statusText = document.getElementById("statusText");
+
+        const notificationsElement = document.getElementById("notifications");
+        const emptyState = document.getElementById("emptyState");
+        const logElement = document.getElementById("log");
+
+        let connection = null;
+
+        function log(...args) {
+            const message = args.map(value => {
+                if (value instanceof Error) {
+                    return value.message;
+                }
+
+                if (typeof value === "object" && value !== null) {
+                    try {
+                        return JSON.stringify(value, null, 2);
+                    } catch {
+                        return String(value);
+                    }
+                }
+
+                return String(value);
+            }).join(" ");
+
+            console.log(...args);
+
+            logElement.textContent =
+                `[${new Date().toLocaleTimeString()}] ${message}\n` +
+                logElement.textContent;
         }
 
-        const token = prompt('Enter your JWT access token (will not be sent to any third party):');
-        if (!token) {
-          log('No token provided, aborting.');
-          return;
+        function setConnectionStatus(connected, message) {
+            statusElement.className = connected
+                ? "status-connected"
+                : "status-disconnected";
+
+            statusText.textContent = message;
+
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            diagBtn.disabled = !connected;
         }
 
-        connection = new signalR.HubConnectionBuilder()
-          .withUrl(window.location.origin + '/hubs/transactions', {
-            accessTokenFactory: () => token
-          })
-          .configureLogging(signalR.LogLevel.Information)
-          .build();
+        function addDetail(container, label, value, extraClass = "") {
+            const detail = document.createElement("div");
+            detail.className = "detail";
 
-        connection.on('TransactionCreated', payload => {
-          log('Received TransactionCreated event:', payload);
+            const labelElement = document.createElement("span");
+            labelElement.className = "detail-label";
+            labelElement.textContent = label;
+
+            const valueElement = document.createElement("span");
+            valueElement.className = "detail-value " + extraClass;
+
+            valueElement.textContent =
+                value === null || value === undefined || value === ""
+                    ? "N/A"
+                    : String(value);
+
+            detail.appendChild(labelElement);
+            detail.appendChild(valueElement);
+            container.appendChild(detail);
+        }
+
+        function formatDate(value) {
+            if (!value) {
+                return "N/A";
+            }
+
+            const date = new Date(value);
+
+            return Number.isNaN(date.getTime())
+                ? String(value)
+                : date.toLocaleString();
+        }
+
+        function displayNotification(eventName, payload) {
+            if (!payload || typeof payload !== "object") {
+                log("Received invalid notification payload:", payload);
+                return;
+            }
+
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const isLargeAlert = eventName === "LargeTransactionAlert";
+
+            const card = document.createElement("article");
+            card.className = isLargeAlert
+                ? "notification-card large-alert"
+                : "notification-card";
+
+            const header = document.createElement("div");
+            header.className = "notification-header";
+
+            const title = document.createElement("h3");
+            title.className = "notification-title";
+            title.textContent = isLargeAlert
+                ? "Large Transaction Alert"
+                : "Transaction Created";
+
+            const badge = document.createElement("span");
+            badge.className = "notification-badge";
+            badge.textContent = isLargeAlert
+                ? "LARGE TRANSACTION"
+                : "TRANSACTION";
+
+            header.appendChild(title);
+            header.appendChild(badge);
+
+            const details = document.createElement("div");
+            details.className = "notification-details";
+
+            addDetail(details, "Transaction Type", payload.transactionType);
+            addDetail(
+                details,
+                "Amount",
+                `${payload.amount ?? "N/A"} ${payload.currency ?? ""}`,
+                "amount-value"
+            );
+            addDetail(details, "Transaction ID", payload.transactionId);
+            addDetail(details, "Reference Number", payload.referenceNumber);
+            addDetail(details, "Source Account ID", payload.sourceAccountId);
+            addDetail(details, "Destination Account ID", payload.destinationAccountId);
+
+            const time = document.createElement("div");
+            time.className = "notification-time";
+            time.textContent = "Created at: " + formatDate(payload.createdAt);
+
+            card.appendChild(header);
+            card.appendChild(details);
+            card.appendChild(time);
+
+            notificationsElement.prepend(card);
+
+            log("Received " + eventName + " event:", payload);
+        }
+
+        if (typeof signalR === "undefined") {
+            log("ERROR: SignalR client library failed to load.");
+            connectBtn.disabled = true;
+        }
+
+        connectBtn.addEventListener("click", async () => {
+            try {
+                if (typeof signalR === "undefined") {
+                    log("SignalR client is not available.");
+                    return;
+                }
+
+                const token = prompt(
+                    "Paste your JWT access token. It will be used to authenticate with your API."
+                );
+
+                if (!token || !token.trim()) {
+                    log("No token provided. Connection cancelled.");
+                    return;
+                }
+
+                if (connection) {
+                    try {
+                        await connection.stop();
+                    } catch {
+                        // Ignore errors from an older connection.
+                    }
+                }
+
+                connection = new signalR.HubConnectionBuilder()
+                    .withUrl(
+                        window.location.origin + "/hubs/transactions",
+                        {
+                            accessTokenFactory: () => token.trim()
+                        }
+                    )
+                    .withAutomaticReconnect()
+                    .configureLogging(signalR.LogLevel.Information)
+                    .build();
+
+                connection.on("TransactionCreated", payload => {
+                    displayNotification("TransactionCreated", payload);
+                });
+
+                connection.on("LargeTransactionAlert", payload => {
+                    displayNotification("LargeTransactionAlert", payload);
+                });
+
+                connection.onclose(error => {
+                    setConnectionStatus(false, "Disconnected");
+
+                    log(
+                        "Connection closed.",
+                        error ? error.message : ""
+                    );
+                });
+
+                connection.onreconnecting(error => {
+                    setConnectionStatus(false, "Reconnecting...");
+                    log(
+                        "Connection lost. Reconnecting...",
+                        error ? error.message : ""
+                    );
+                });
+
+                connection.onreconnected(connectionId => {
+                    setConnectionStatus(true, "Connected");
+                    log("SignalR reconnected. Connection ID:", connectionId);
+                });
+
+                setConnectionStatus(false, "Connecting...");
+
+                await connection.start();
+
+                window.bankTaskTestConnection = connection;
+
+                setConnectionStatus(true, "Connected");
+
+                log("Connected successfully to TransactionsHub.");
+            } catch (error) {
+                setConnectionStatus(false, "Connection failed");
+                log("Connection failed:", error);
+            }
         });
 
-        connection.onclose(err => {
-          log('Connection closed.', err ? err.toString() : '');
+        disconnectBtn.addEventListener("click", async () => {
+            if (!connection) {
+                return;
+            }
+
+            try {
+                await connection.stop();
+                setConnectionStatus(false, "Disconnected");
+                log("Disconnected manually.");
+            } catch (error) {
+                log("Disconnect failed:", error);
+            }
         });
 
-        await connection.start();
-        window.bankTaskTestConnection = connection;
-        log('Connected. You can now create a transaction via the API.');
-      } catch (err) {
-        log('Connection failed:', err);
-      }
-    });
+        diagBtn.addEventListener("click", async () => {
+            if (!connection ||
+                connection.state !== signalR.HubConnectionState.Connected) {
+                log("Not connected to the Hub.");
+                return;
+            }
 
-    document.getElementById('diagBtn').addEventListener('click', async () => {
-      if (!connection) {
-        log('Not connected.');
-        return;
-      }
+            try {
+                const result = await connection.invoke(
+                    "GetConnectionDiagnostics"
+                );
 
-      try {
-        // Call the diagnostics method on the hub to see the user identifier
-        const result = await connection.invoke('GetConnectionDiagnostics');
-        log('Connection diagnostics:', result);
-      } catch (err) {
-        log('Diagnostics failed:', err);
-      }
-    });
-  </script>
-
-  <h3>Quick instructions</h3>
-  <ol>
-    <li>Open Swagger and either create a user (<code>/api/Auth/signup</code>) or login (<code>/api/Auth/login</code>).</li>
-    <li>Copy the access token from the login response (do not paste it here in any public place).</li>
-    <li>Click <strong>Connect to Hub</strong> and paste the token when prompted.</li>
-    <li>Use the <code>Get Connection Diagnostics</code> button to confirm <code>UserIdentifier</code> matches your user id.</li>
-    <li>Create a Deposit transaction via <code>/api/Transactions</code> using your account id as <code>destinationAccountId</code>.</li>
-    <li>Watch for the <code>TransactionCreated</code> event in the log above.</li>
-  </ol>
+                log("Connection diagnostics:", result);
+            } catch (error) {
+                log("Diagnostics failed:", error);
+            }
+        });
+    </script>
 </body>
 </html>

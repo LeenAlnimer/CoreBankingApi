@@ -9,6 +9,7 @@ using BankTask.Application.Mappers;
 using BankTask.Domain.Entities;
 using BankTask.Domain.Enums;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 
 namespace BankTask.Application.Services;
 
@@ -16,6 +17,9 @@ public class TransactionService : ITransactionService
 {
     private const string TransactionCreatedQueue = "transaction-created";
     private const string TransactionEmailQueue = "transaction-email";
+    private const string LargeTransactionAlertQueue = "large-transaction-alert";
+
+    private readonly decimal _largeTransactionThreshold;
 
     private readonly ITransactionRepository _transactionRepository;
     private readonly IAccountRepository _accountRepository;
@@ -28,19 +32,24 @@ public class TransactionService : ITransactionService
         IAccountRepository accountRepository,
         IAuditLogRepository auditLogRepository,
         IRabbitMqPublisher rabbitMqPublisher,
-        IHttpContextAccessor httpContextAccessor)
+        IHttpContextAccessor httpContextAccessor,
+        IConfiguration configuration)
     {
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
         _auditLogRepository = auditLogRepository;
         _rabbitMqPublisher = rabbitMqPublisher;
         _httpContextAccessor = httpContextAccessor;
+
+        _largeTransactionThreshold =
+            configuration.GetValue<decimal>(
+                "TransactionAlerts:LargeTransactionThreshold",
+                5000m);
     }
 
     public async Task<TransactionResponse?> GetByIdAsync(Guid id)
     {
-        var transaction =
-            await _transactionRepository.GetByIdAsync(id);
+        var transaction = await _transactionRepository.GetByIdAsync(id);
 
         if (transaction is null)
         {
@@ -53,8 +62,7 @@ public class TransactionService : ITransactionService
 
     public async Task<IEnumerable<TransactionResponse>> GetAllAsync()
     {
-        var transactions =
-            await _transactionRepository.GetAllAsync();
+        var transactions = await _transactionRepository.GetAllAsync();
 
         return transactions.Select(TransactionMapper.ToResponse);
     }
@@ -183,14 +191,16 @@ public class TransactionService : ITransactionService
                 break;
         }
 
+        var transactionTypeName =
+            ((TransactionType)createdTransaction.TransactionType).ToString();
+
         var transactionCreatedEvent = new TransactionCreatedEvent
         {
             EventId = createdTransaction.EventId,
             TransactionId = createdTransaction.Id,
             SourceAccountId = createdTransaction.SourceAccountId,
             DestinationAccountId = createdTransaction.DestinationAccountId,
-            TransactionType =
-                ((TransactionType)createdTransaction.TransactionType).ToString(),
+            TransactionType = transactionTypeName,
             Amount = createdTransaction.Amount,
             Currency = createdTransaction.Currency,
             ReferenceNumber = createdTransaction.ReferenceNumber,
@@ -198,7 +208,7 @@ public class TransactionService : ITransactionService
             RecipientUserIds = recipientUserIds.ToList()
         };
 
-        // Publish the event for SignalR notifications.
+        // Publish the event for regular SignalR notifications.
         await _rabbitMqPublisher.PublishAsync(
             TransactionCreatedQueue,
             transactionCreatedEvent);
@@ -208,8 +218,7 @@ public class TransactionService : ITransactionService
         {
             EventId = createdTransaction.EventId,
             TransactionId = createdTransaction.Id,
-            TransactionType =
-                ((TransactionType)createdTransaction.TransactionType).ToString(),
+            TransactionType = transactionTypeName,
             Amount = createdTransaction.Amount,
             Currency = createdTransaction.Currency,
             ReferenceNumber = createdTransaction.ReferenceNumber,
@@ -220,6 +229,32 @@ public class TransactionService : ITransactionService
         await _rabbitMqPublisher.PublishAsync(
             TransactionEmailQueue,
             transactionEmailEvent);
+
+        // Publish a separate alert for large transactions in JOD.
+        if (string.Equals(
+                createdTransaction.Currency,
+                "JOD",
+                StringComparison.OrdinalIgnoreCase)
+            && createdTransaction.Amount >= _largeTransactionThreshold)
+        {
+            var largeTransactionAlertEvent = new LargeTransactionAlertEvent
+            {
+                EventId = Guid.NewGuid(),
+                TransactionId = createdTransaction.Id,
+                SourceAccountId = createdTransaction.SourceAccountId,
+                DestinationAccountId = createdTransaction.DestinationAccountId,
+                TransactionType = transactionTypeName,
+                Amount = createdTransaction.Amount,
+                Currency = createdTransaction.Currency,
+                ReferenceNumber = createdTransaction.ReferenceNumber,
+                CreatedAt = createdTransaction.CreatedAt,
+                RecipientUserIds = recipientUserIds.ToList()
+            };
+
+            await _rabbitMqPublisher.PublishAsync(
+                LargeTransactionAlertQueue,
+                largeTransactionAlertEvent);
+        }
 
         return TransactionMapper.ToResponse(createdTransaction);
     }
