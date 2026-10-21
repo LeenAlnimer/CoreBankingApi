@@ -24,5 +24,20 @@ public class CreateTransactionRequestValidator : AbstractValidator<CreateTransac
         RuleFor(x => x.Description)
             .MaximumLength(500)
             .WithErrorCode("TRANSACTION_DESCRIPTION_MAX_LENGTH");
+
+        When(x => x.TransactionType == BankTask.Domain.Enums.TransactionType.Transfer, () =>
+        {
+            RuleFor(x => x.SourceAccountId)
+                .NotNull()
+                .WithErrorCode("SOURCE_ACCOUNT_REQUIRED");
+
+            RuleFor(x => x.DestinationAccountId)
+                .NotNull()
+                .WithErrorCode("DESTINATION_ACCOUNT_REQUIRED");
+
+            RuleFor(x => x)
+                .Must(x => x.SourceAccountId != x.DestinationAccountId)
+                .WithErrorCode("TRANSFER_ACCOUNTS_MUST_BE_DIFFERENT");
+        });
     }
 }

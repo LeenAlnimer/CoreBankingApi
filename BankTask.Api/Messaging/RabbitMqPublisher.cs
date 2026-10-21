@@ -1,6 +1,7 @@
 ﻿
 using System.Text;
 using System.Text.Json;
+using BankTask.Application.Events;
 using BankTask.Application.Interfaces.Services;
 using RabbitMQ.Client;
 
@@ -39,12 +40,32 @@ public class RabbitMqPublisher : IRabbitMqPublisher
             await connection.CreateChannelAsync(
                 cancellationToken: cancellationToken);
 
+        IDictionary<string, object?>? queueArguments = null;
+
+        if (queueName == CacheInvalidationEvent.QueueName)
+        {
+            await channel.QueueDeclareAsync(
+                queue: CacheInvalidationEvent.DeadLetterQueueName,
+                durable: true,
+                exclusive: false,
+                autoDelete: false,
+                arguments: null,
+                cancellationToken: cancellationToken);
+
+            queueArguments = new Dictionary<string, object?>
+            {
+                ["x-dead-letter-exchange"] = string.Empty,
+                ["x-dead-letter-routing-key"] =
+                    CacheInvalidationEvent.DeadLetterQueueName
+            };
+        }
+
         await channel.QueueDeclareAsync(
             queue: queueName,
             durable: true,
             exclusive: false,
             autoDelete: false,
-            arguments: null,
+            arguments: queueArguments,
             cancellationToken: cancellationToken);
 
         var json = JsonSerializer.Serialize(message);

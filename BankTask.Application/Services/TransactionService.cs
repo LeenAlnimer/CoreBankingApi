@@ -1,6 +1,7 @@
 ﻿
 using System.Security.Claims;
 using System.Text.Json;
+using BankTask.Application.Caching;
 using BankTask.Application.Events;
 using BankTask.Application.DTOs.Transactions;
 using BankTask.Application.Interfaces.Repositories;
@@ -25,6 +26,7 @@ public class TransactionService : ITransactionService
     private readonly IAccountRepository _accountRepository;
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly IRabbitMqPublisher _rabbitMqPublisher;
+    private readonly ICacheService _cacheService;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public TransactionService(
@@ -32,6 +34,7 @@ public class TransactionService : ITransactionService
         IAccountRepository accountRepository,
         IAuditLogRepository auditLogRepository,
         IRabbitMqPublisher rabbitMqPublisher,
+        ICacheService cacheService,
         IHttpContextAccessor httpContextAccessor,
         IConfiguration configuration)
     {
@@ -39,6 +42,7 @@ public class TransactionService : ITransactionService
         _accountRepository = accountRepository;
         _auditLogRepository = auditLogRepository;
         _rabbitMqPublisher = rabbitMqPublisher;
+        _cacheService = cacheService;
         _httpContextAccessor = httpContextAccessor;
 
         _largeTransactionThreshold =
@@ -49,6 +53,15 @@ public class TransactionService : ITransactionService
 
     public async Task<TransactionResponse?> GetByIdAsync(Guid id)
     {
+        var cacheKey = CacheKeys.TransactionById(id);
+        var cachedTransaction =
+            await _cacheService.GetAsync<TransactionResponse>(cacheKey);
+
+        if (cachedTransaction is not null)
+        {
+            return cachedTransaction;
+        }
+
         var transaction = await _transactionRepository.GetByIdAsync(id);
 
         if (transaction is null)
@@ -57,20 +70,50 @@ public class TransactionService : ITransactionService
                 "TRANSACTION_NOT_FOUND");
         }
 
-        return TransactionMapper.ToResponse(transaction);
+        var response = TransactionMapper.ToResponse(transaction);
+        await _cacheService.SetAsync(
+            cacheKey,
+            response,
+            TimeSpan.FromMinutes(5));
+
+        return response;
     }
 
     public async Task<IEnumerable<TransactionResponse>> GetAllAsync()
     {
-        var transactions = await _transactionRepository.GetAllAsync();
+        var cachedTransactions =
+            await _cacheService.GetAsync<List<TransactionResponse>>(
+                CacheKeys.AllTransactions);
 
-        return transactions.Select(TransactionMapper.ToResponse);
+        if (cachedTransactions is not null)
+        {
+            return cachedTransactions;
+        }
+
+        var transactions = await _transactionRepository.GetAllAsync();
+        var responses = transactions
+            .Select(TransactionMapper.ToResponse)
+            .ToList();
+
+        await _cacheService.SetAsync(
+            CacheKeys.AllTransactions,
+            responses,
+            TimeSpan.FromMinutes(5));
+
+        return responses;
     }
 
     public async Task<TransactionResponse> CreateAsync(
         CreateTransactionRequest request)
     {
         ValidateTransaction(request);
+
+        if (request.TransactionType == TransactionType.Transfer
+            && request.SourceAccountId == request.DestinationAccountId)
+        {
+            throw new BankTask.Application.Exceptions.ValidationException(
+                "TRANSFER_ACCOUNTS_MUST_BE_DIFFERENT");
+        }
 
         Account? sourceAccount = null;
         Account? destinationAccount = null;
@@ -138,6 +181,18 @@ public class TransactionService : ITransactionService
 
         var createdTransaction =
             await _transactionRepository.CreateAsync(transaction);
+
+        await _rabbitMqPublisher.PublishAsync(
+            CacheInvalidationEvent.QueueName,
+            new CacheInvalidationEvent
+            {
+                EventId = Guid.NewGuid(),
+                Keys = new List<string>
+                {
+                    CacheKeys.AllTransactions,
+                    CacheKeys.TransactionById(createdTransaction.Id)
+                }
+            });
 
         await CreateAuditLogAsync(
             action: "TRANSACTION_CREATED",

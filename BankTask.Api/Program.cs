@@ -222,6 +222,7 @@ builder.Services.AddScoped<
     ITransactionNotificationService,
     TransactionNotificationService>();
 builder.Services.AddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
+builder.Services.AddHostedService<CacheInvalidationConsumer>();
 builder.Services.AddHostedService<TransactionCreatedConsumer>();
 builder.Services.AddHostedService<TransactionEmailConsumer>();
 builder.Services.AddHostedService<LargeTransactionAlertConsumer>();

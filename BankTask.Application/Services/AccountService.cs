@@ -1,6 +1,8 @@
 ﻿using System.Security.Claims;
 using System.Text.Json;
+using BankTask.Application.Caching;
 using BankTask.Application.DTOs.Accounts;
+using BankTask.Application.Events;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Services;
 using BankTask.Application.Mappers;
@@ -14,20 +16,35 @@ public class AccountService : IAccountService
 {
     private readonly IAccountRepository _accountRepository;
     private readonly IAuditLogRepository _auditLogRepository;
+    private readonly ICacheService _cacheService;
+    private readonly IRabbitMqPublisher _rabbitMqPublisher;
     private readonly IHttpContextAccessor _httpContextAccessor;
 
     public AccountService(
         IAccountRepository accountRepository,
         IAuditLogRepository auditLogRepository,
+        ICacheService cacheService,
+        IRabbitMqPublisher rabbitMqPublisher,
         IHttpContextAccessor httpContextAccessor)
     {
         _accountRepository = accountRepository;
         _auditLogRepository = auditLogRepository;
+        _cacheService = cacheService;
+        _rabbitMqPublisher = rabbitMqPublisher;
         _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<AccountResponse?> GetByIdAsync(Guid id)
     {
+        var cacheKey = CacheKeys.AccountById(id);
+        var cachedAccount =
+            await _cacheService.GetAsync<AccountResponse>(cacheKey);
+
+        if (cachedAccount is not null)
+        {
+            return cachedAccount;
+        }
+
         var account = await _accountRepository.GetByIdAsync(id);
 
         if (account is null)
@@ -36,14 +53,37 @@ public class AccountService : IAccountService
                 "ACCOUNT_NOT_FOUND");
         }
 
-        return AccountMapper.ToResponse(account);
+        var response = AccountMapper.ToResponse(account);
+        await _cacheService.SetAsync(
+            cacheKey,
+            response,
+            TimeSpan.FromMinutes(5));
+
+        return response;
     }
 
     public async Task<IEnumerable<AccountResponse>> GetAllAsync()
     {
-        var accounts = await _accountRepository.GetAllAsync();
+        var cachedAccounts =
+            await _cacheService.GetAsync<List<AccountResponse>>(
+                CacheKeys.AllAccounts);
 
-        return accounts.Select(AccountMapper.ToResponse);
+        if (cachedAccounts is not null)
+        {
+            return cachedAccounts;
+        }
+
+        var accounts = await _accountRepository.GetAllAsync();
+        var responses = accounts
+            .Select(AccountMapper.ToResponse)
+            .ToList();
+
+        await _cacheService.SetAsync(
+            CacheKeys.AllAccounts,
+            responses,
+            TimeSpan.FromMinutes(5));
+
+        return responses;
     }
 
     public async Task<AccountResponse> CreateAsync(
@@ -67,6 +107,8 @@ public class AccountService : IAccountService
 
         var createdAccount =
             await _accountRepository.CreateAsync(account);
+
+        await PublishCacheInvalidationAsync(CacheKeys.AllAccounts);
 
         await CreateAuditLogAsync(
             action: "ACCOUNT_CREATED",
@@ -110,6 +152,10 @@ public class AccountService : IAccountService
 
         if (updated)
         {
+            await PublishCacheInvalidationAsync(
+                CacheKeys.AccountById(existingAccount.Id),
+                CacheKeys.AllAccounts);
+
             await CreateAuditLogAsync(
                 action: "ACCOUNT_UPDATED",
                 entityId: existingAccount.Id,
@@ -150,6 +196,10 @@ public class AccountService : IAccountService
 
         if (deleted)
         {
+            await PublishCacheInvalidationAsync(
+                CacheKeys.AccountById(existingAccount.Id),
+                CacheKeys.AllAccounts);
+
             await CreateAuditLogAsync(
                 action: "ACCOUNT_DELETED",
                 entityId: existingAccount.Id,
@@ -173,6 +223,15 @@ public class AccountService : IAccountService
 
         return deleted;
     }
+
+    private Task PublishCacheInvalidationAsync(params string[] keys) =>
+        _rabbitMqPublisher.PublishAsync(
+            CacheInvalidationEvent.QueueName,
+            new CacheInvalidationEvent
+            {
+                EventId = Guid.NewGuid(),
+                Keys = keys.Distinct(StringComparer.Ordinal).ToList()
+            });
 
     private async Task CreateAuditLogAsync(
         string action,
