@@ -118,7 +118,7 @@ public class CacheInvalidationConsumer : BackgroundService
             {
                 _logger.LogError(
                     ex,
-                    "Cache invalidation message failed and will be dead-lettered. EventId: {EventId}",
+                    "Cache invalidation message failed and will be requeued. EventId: {EventId}",
                     invalidationEvent?.EventId);
 
                 try
@@ -126,7 +126,7 @@ public class CacheInvalidationConsumer : BackgroundService
                     await channel.BasicNackAsync(
                         deliveryTag: eventArgs.DeliveryTag,
                         multiple: false,
-                        requeue: false,
+                        requeue: true,
                         cancellationToken: CancellationToken.None);
                 }
                 catch (Exception nackException)

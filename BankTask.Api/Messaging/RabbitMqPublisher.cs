@@ -32,13 +32,20 @@ public class RabbitMqPublisher : IRabbitMqPublisher
                 nameof(queueName));
         }
 
+        ArgumentNullException.ThrowIfNull(message);
+
         var connection =
             await _connectionManager.GetConnectionAsync(
                 cancellationToken);
 
+        var channelOptions = new CreateChannelOptions(
+            publisherConfirmationsEnabled: true,
+            publisherConfirmationTrackingEnabled: true);
+
         await using var channel =
             await connection.CreateChannelAsync(
-                cancellationToken: cancellationToken);
+                channelOptions,
+                cancellationToken);
 
         IDictionary<string, object?>? queueArguments = null;
 
@@ -71,14 +78,23 @@ public class RabbitMqPublisher : IRabbitMqPublisher
         var json = JsonSerializer.Serialize(message);
         var body = Encoding.UTF8.GetBytes(json);
 
+        var properties = new BasicProperties
+        {
+            Persistent = true,
+            ContentType = "application/json"
+        };
+
         await channel.BasicPublishAsync(
             exchange: string.Empty,
             routingKey: queueName,
+            mandatory: true,
+            basicProperties: properties,
             body: body,
             cancellationToken: cancellationToken);
 
         _logger.LogInformation(
-            "Published message to RabbitMQ queue {QueueName}",
+            "Published message to RabbitMQ queue {QueueName} with publisher confirms enabled.",
             queueName);
     }
 }
+

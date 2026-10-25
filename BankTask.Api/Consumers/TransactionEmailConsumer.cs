@@ -147,14 +147,14 @@ public class TransactionEmailConsumer : BackgroundService
             {
                 _logger.LogError(
                     ex,
-                    "Failed to process transaction email message.");
+                    "Failed to process transaction email message. It will be requeued.");
 
                 try
                 {
                     await channel.BasicNackAsync(
                         deliveryTag: eventArgs.DeliveryTag,
                         multiple: false,
-                        requeue: false,
+                        requeue: true,
                         cancellationToken: CancellationToken.None);
                 }
                 catch (Exception nackException)

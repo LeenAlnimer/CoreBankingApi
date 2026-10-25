@@ -139,14 +139,14 @@ public class TransactionCreatedConsumer : BackgroundService
             {
                 _logger.LogError(
                     ex,
-                    "Failed to process transaction-created message.");
+                    "Failed to process transaction-created message. It will be requeued.");
 
                 try
                 {
                     await channel.BasicNackAsync(
                         deliveryTag: eventArgs.DeliveryTag,
                         multiple: false,
-                        requeue: false,
+                        requeue: true,
                         cancellationToken: CancellationToken.None);
                 }
                 catch (Exception nackException)
