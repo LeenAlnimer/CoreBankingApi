@@ -1,4 +1,6 @@
-﻿using System.Text.Json;
+﻿
+using System.Text.Json;
+using BankTask.Api.Messaging;
 using BankTask.Application.DTOs.Notifications;
 using BankTask.Application.Events;
 using BankTask.Application.Interfaces.Services;
@@ -11,16 +13,16 @@ public class TransactionCreatedConsumer : BackgroundService
 {
     private const string QueueName = "transaction-created";
 
-    private readonly RabbitMQ.Client.ConnectionFactory _connectionFactory;
+    private readonly RabbitMqConnectionManager _connectionManager;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<TransactionCreatedConsumer> _logger;
 
     public TransactionCreatedConsumer(
-        RabbitMQ.Client.ConnectionFactory connectionFactory,
+        RabbitMqConnectionManager connectionManager,
         IServiceScopeFactory serviceScopeFactory,
         ILogger<TransactionCreatedConsumer> logger)
     {
-        _connectionFactory = connectionFactory;
+        _connectionManager = connectionManager;
         _serviceScopeFactory = serviceScopeFactory;
         _logger = logger;
     }
@@ -28,10 +30,11 @@ public class TransactionCreatedConsumer : BackgroundService
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
-        _logger.LogWarning(
-       "TEST: TransactionCreatedConsumer ExecuteAsync STARTED.");
-        await using var connection =
-            await _connectionFactory.CreateConnectionAsync(stoppingToken);
+        _logger.LogInformation(
+            "TransactionCreatedConsumer ExecuteAsync started.");
+
+        var connection =
+            await _connectionManager.GetConnectionAsync(stoppingToken);
 
         await using var channel =
             await connection.CreateChannelAsync(
@@ -138,11 +141,20 @@ public class TransactionCreatedConsumer : BackgroundService
                     ex,
                     "Failed to process transaction-created message.");
 
-                await channel.BasicNackAsync(
-                    deliveryTag: eventArgs.DeliveryTag,
-                    multiple: false,
-                    requeue: false,
-                    cancellationToken: stoppingToken);
+                try
+                {
+                    await channel.BasicNackAsync(
+                        deliveryTag: eventArgs.DeliveryTag,
+                        multiple: false,
+                        requeue: false,
+                        cancellationToken: CancellationToken.None);
+                }
+                catch (Exception nackException)
+                {
+                    _logger.LogError(
+                        nackException,
+                        "Failed to negatively acknowledge transaction-created message.");
+                }
             }
         };
 

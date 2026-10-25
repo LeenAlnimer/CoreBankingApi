@@ -1,4 +1,6 @@
+
 using System.Text.Json;
+using BankTask.Api.Messaging;
 using BankTask.Application.Caching;
 using BankTask.Application.Events;
 using BankTask.Application.Interfaces.Services;
@@ -11,16 +13,16 @@ public class CacheInvalidationConsumer : BackgroundService
 {
     private const int MaximumKeyCount = 100;
 
-    private readonly ConnectionFactory _connectionFactory;
+    private readonly RabbitMqConnectionManager _connectionManager;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<CacheInvalidationConsumer> _logger;
 
     public CacheInvalidationConsumer(
-        ConnectionFactory connectionFactory,
+        RabbitMqConnectionManager connectionManager,
         IServiceScopeFactory serviceScopeFactory,
         ILogger<CacheInvalidationConsumer> logger)
     {
-        _connectionFactory = connectionFactory;
+        _connectionManager = connectionManager;
         _serviceScopeFactory = serviceScopeFactory;
         _logger = logger;
     }
@@ -28,8 +30,8 @@ public class CacheInvalidationConsumer : BackgroundService
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
-        await using var connection =
-            await _connectionFactory.CreateConnectionAsync(stoppingToken);
+        var connection =
+            await _connectionManager.GetConnectionAsync(stoppingToken);
 
         await using var channel =
             await connection.CreateChannelAsync(
@@ -65,6 +67,7 @@ public class CacheInvalidationConsumer : BackgroundService
             cancellationToken: stoppingToken);
 
         var consumer = new AsyncEventingBasicConsumer(channel);
+
         consumer.ReceivedAsync += async (_, eventArgs) =>
         {
             CacheInvalidationEvent? invalidationEvent = null;
@@ -80,16 +83,19 @@ public class CacheInvalidationConsumer : BackgroundService
                         eventArgs.Body.ToArray());
 
                 var keys = invalidationEvent?.Keys;
+
                 if (keys is null ||
                     keys.Count == 0 ||
                     keys.Count > MaximumKeyCount ||
-                    keys.Any(key => !CacheKeys.IsValidInvalidationKey(key)))
+                    keys.Any(key =>
+                        !CacheKeys.IsValidInvalidationKey(key)))
                 {
                     throw new InvalidOperationException(
                         "Cache invalidation message contains an invalid key list.");
                 }
 
                 using var scope = _serviceScopeFactory.CreateScope();
+
                 var cacheService =
                     scope.ServiceProvider.GetRequiredService<ICacheService>();
 

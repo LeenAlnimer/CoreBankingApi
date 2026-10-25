@@ -9,14 +9,14 @@ namespace BankTask.Api.Messaging;
 
 public class RabbitMqPublisher : IRabbitMqPublisher
 {
-    private readonly ConnectionFactory _connectionFactory;
+    private readonly RabbitMqConnectionManager _connectionManager;
     private readonly ILogger<RabbitMqPublisher> _logger;
 
     public RabbitMqPublisher(
-        ConnectionFactory connectionFactory,
+        RabbitMqConnectionManager connectionManager,
         ILogger<RabbitMqPublisher> logger)
     {
-        _connectionFactory = connectionFactory;
+        _connectionManager = connectionManager;
         _logger = logger;
     }
 
@@ -32,8 +32,8 @@ public class RabbitMqPublisher : IRabbitMqPublisher
                 nameof(queueName));
         }
 
-        await using var connection =
-            await _connectionFactory.CreateConnectionAsync(
+        var connection =
+            await _connectionManager.GetConnectionAsync(
                 cancellationToken);
 
         await using var channel =

@@ -11,6 +11,7 @@ using BankTask.Domain.Entities;
 using BankTask.Domain.Enums;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace BankTask.Application.Services;
 
@@ -28,6 +29,7 @@ public class TransactionService : ITransactionService
     private readonly IRabbitMqPublisher _rabbitMqPublisher;
     private readonly ICacheService _cacheService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<TransactionService> _logger;
 
     public TransactionService(
         ITransactionRepository transactionRepository,
@@ -36,7 +38,8 @@ public class TransactionService : ITransactionService
         IRabbitMqPublisher rabbitMqPublisher,
         ICacheService cacheService,
         IHttpContextAccessor httpContextAccessor,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<TransactionService> logger)
     {
         _transactionRepository = transactionRepository;
         _accountRepository = accountRepository;
@@ -44,6 +47,7 @@ public class TransactionService : ITransactionService
         _rabbitMqPublisher = rabbitMqPublisher;
         _cacheService = cacheService;
         _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
 
         _largeTransactionThreshold =
             configuration.GetValue<decimal>(
@@ -182,6 +186,13 @@ public class TransactionService : ITransactionService
         var createdTransaction =
             await _transactionRepository.CreateAsync(transaction);
 
+        _logger.LogInformation(
+            "Transaction created successfully. EventId: {EventId}, TransactionId: {TransactionId}, Amount: {Amount}, Currency: {Currency}",
+            createdTransaction.EventId,
+            createdTransaction.Id,
+            createdTransaction.Amount,
+            createdTransaction.Currency);
+
         await _rabbitMqPublisher.PublishAsync(
             CacheInvalidationEvent.QueueName,
             new CacheInvalidationEvent
@@ -263,10 +274,23 @@ public class TransactionService : ITransactionService
             RecipientUserIds = recipientUserIds.ToList()
         };
 
-        // Publish the event for regular SignalR notifications.
+        _logger.LogInformation(
+            "Publishing SignalR event {SignalREventName} to RabbitMQ queue {QueueName}. EventId: {EventId}, TransactionId: {TransactionId}, RecipientCount: {RecipientCount}",
+            "TransactionCreated",
+            TransactionCreatedQueue,
+            transactionCreatedEvent.EventId,
+            transactionCreatedEvent.TransactionId,
+            transactionCreatedEvent.RecipientUserIds.Count);
+
         await _rabbitMqPublisher.PublishAsync(
             TransactionCreatedQueue,
             transactionCreatedEvent);
+
+        _logger.LogInformation(
+            "Published SignalR event {SignalREventName} to RabbitMQ queue {QueueName}. TransactionId: {TransactionId}",
+            "TransactionCreated",
+            TransactionCreatedQueue,
+            transactionCreatedEvent.TransactionId);
 
         // Publish a separate event for transaction emails.
         var transactionEmailEvent = new TransactionEmailEvent
@@ -306,9 +330,23 @@ public class TransactionService : ITransactionService
                 RecipientUserIds = recipientUserIds.ToList()
             };
 
+            _logger.LogInformation(
+                "Publishing SignalR event {SignalREventName} to RabbitMQ queue {QueueName}. EventId: {EventId}, TransactionId: {TransactionId}, RecipientCount: {RecipientCount}",
+                "LargeTransactionAlert",
+                LargeTransactionAlertQueue,
+                largeTransactionAlertEvent.EventId,
+                largeTransactionAlertEvent.TransactionId,
+                largeTransactionAlertEvent.RecipientUserIds.Count);
+
             await _rabbitMqPublisher.PublishAsync(
                 LargeTransactionAlertQueue,
                 largeTransactionAlertEvent);
+
+            _logger.LogInformation(
+                "Published SignalR event {SignalREventName} to RabbitMQ queue {QueueName}. TransactionId: {TransactionId}",
+                "LargeTransactionAlert",
+                LargeTransactionAlertQueue,
+                largeTransactionAlertEvent.TransactionId);
         }
 
         return TransactionMapper.ToResponse(createdTransaction);

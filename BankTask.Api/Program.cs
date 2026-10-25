@@ -1,5 +1,6 @@
 
 using System.Text;
+using BankTask.Api.Consumers;
 using BankTask.Api.Filters;
 using BankTask.Api.Hubs;
 using BankTask.Api.Messaging;
@@ -22,10 +23,9 @@ using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using RabbitMQ.Client;
 using Serilog;
 using Serilog.Sinks.Network;
-using BankTask.Api.Consumers;
-using BankTask.Api.Messaging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -59,38 +59,47 @@ builder.Services.AddHangfire(configuration =>
 
 builder.Services.AddHangfireServer();
 
-var connectionFactory = new ConnectionFactory(
-    sqlServerConnectionString,
-    postgreSqlConnectionString);
+// DBManager ConnectionFactory
 
-builder.Services.AddSingleton<IConnectionFactory>(
+var connectionFactory =
+    new BankTask.DBManager.ConnectionFactory(
+        sqlServerConnectionString,
+        postgreSqlConnectionString);
+
+builder.Services.AddSingleton<
+    BankTask.DBManager.IConnectionFactory>(
     connectionFactory);
 
 // RabbitMQ Configuration
 
-builder.Services.AddSingleton<RabbitMQ.Client.ConnectionFactory>(_ =>
-{
-    var rabbitMqSection =
-        builder.Configuration.GetSection("RabbitMQ");
-
-    return new RabbitMQ.Client.ConnectionFactory
+builder.Services.AddSingleton<
+    RabbitMQ.Client.ConnectionFactory>(_ =>
     {
-        HostName =
-            rabbitMqSection["HostName"] ?? "localhost",
+        var rabbitMqSection =
+            builder.Configuration.GetSection("RabbitMQ");
 
-        Port =
-            rabbitMqSection.GetValue<int>("Port", 5672),
+        return new RabbitMQ.Client.ConnectionFactory
+        {
+            HostName =
+                rabbitMqSection["HostName"] ?? "localhost",
 
-        UserName =
-            rabbitMqSection["UserName"] ?? "guest",
+            Port =
+                rabbitMqSection.GetValue<int>("Port", 5672),
 
-        Password =
-            rabbitMqSection["Password"] ?? "guest",
+            UserName =
+                rabbitMqSection["UserName"] ?? "guest",
 
-        VirtualHost =
-            rabbitMqSection["VirtualHost"] ?? "/"
-    };
-});
+            Password =
+                rabbitMqSection["Password"] ?? "guest",
+
+            VirtualHost =
+                rabbitMqSection["VirtualHost"] ?? "/"
+        };
+    });
+
+// Shared long-lived RabbitMQ connection manager
+
+builder.Services.AddSingleton<RabbitMqConnectionManager>();
 
 // Repositories
 
@@ -159,8 +168,6 @@ builder.Services
                 ClockSkew = TimeSpan.Zero
             };
 
-        // Allow SignalR to receive the JWT through access_token
-        // for the transactions Hub endpoint only.
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -221,11 +228,18 @@ builder.Services.AddSingleton<
 builder.Services.AddScoped<
     ITransactionNotificationService,
     TransactionNotificationService>();
-builder.Services.AddSingleton<IRabbitMqPublisher, RabbitMqPublisher>();
+
+// RabbitMQ Publisher and Consumers
+
+builder.Services.AddSingleton<
+    IRabbitMqPublisher,
+    RabbitMqPublisher>();
+
 builder.Services.AddHostedService<CacheInvalidationConsumer>();
 builder.Services.AddHostedService<TransactionCreatedConsumer>();
 builder.Services.AddHostedService<TransactionEmailConsumer>();
 builder.Services.AddHostedService<LargeTransactionAlertConsumer>();
+
 // Validation
 
 builder.Services.AddValidatorsFromAssemblyContaining<

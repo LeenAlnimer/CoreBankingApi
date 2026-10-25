@@ -551,7 +551,7 @@
 
                 setConnectionStatus(true, "Connected");
 
-                log("Connected successfully to TransactionsHub.");
+                log("Connected to TransactionsHub. Waiting for notifications addressed to this authenticated user.");
             } catch (error) {
                 setConnectionStatus(false, "Connection failed");
                 log("Connection failed:", error);

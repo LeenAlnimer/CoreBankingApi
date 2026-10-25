@@ -7,6 +7,44 @@ namespace BankTask.Api.Hubs;
 [Authorize]
 public class TransactionsHub : Hub
 {
+    private readonly ILogger<TransactionsHub> _logger;
+
+    public TransactionsHub(ILogger<TransactionsHub> logger)
+    {
+        _logger = logger;
+    }
+
+    public override async Task OnConnectedAsync()
+    {
+        _logger.LogInformation(
+            "SignalR client connected. ConnectionId: {ConnectionId}, UserIdentifier: {UserIdentifier}",
+            Context.ConnectionId,
+            Context.UserIdentifier);
+
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        if (exception is null)
+        {
+            _logger.LogInformation(
+                "SignalR client disconnected. ConnectionId: {ConnectionId}, UserIdentifier: {UserIdentifier}",
+                Context.ConnectionId,
+                Context.UserIdentifier);
+        }
+        else
+        {
+            _logger.LogWarning(
+                exception,
+                "SignalR client disconnected with an error. ConnectionId: {ConnectionId}, UserIdentifier: {UserIdentifier}",
+                Context.ConnectionId,
+                Context.UserIdentifier);
+        }
+
+        await base.OnDisconnectedAsync(exception);
+    }
+
     public async Task SendTestNotification()
     {
         await Clients.Caller.SendAsync(

@@ -1,5 +1,6 @@
 ﻿
 using System.Text.Json;
+using BankTask.Api.Messaging;
 using BankTask.Application.DTOs.Notifications;
 using BankTask.Application.Events;
 using BankTask.Application.Interfaces.Services;
@@ -12,16 +13,16 @@ public class LargeTransactionAlertConsumer : BackgroundService
 {
     private const string QueueName = "large-transaction-alert";
 
-    private readonly ConnectionFactory _connectionFactory;
+    private readonly RabbitMqConnectionManager _connectionManager;
     private readonly IServiceScopeFactory _serviceScopeFactory;
     private readonly ILogger<LargeTransactionAlertConsumer> _logger;
 
     public LargeTransactionAlertConsumer(
-        ConnectionFactory connectionFactory,
+        RabbitMqConnectionManager connectionManager,
         IServiceScopeFactory serviceScopeFactory,
         ILogger<LargeTransactionAlertConsumer> logger)
     {
-        _connectionFactory = connectionFactory;
+        _connectionManager = connectionManager;
         _serviceScopeFactory = serviceScopeFactory;
         _logger = logger;
     }
@@ -29,8 +30,8 @@ public class LargeTransactionAlertConsumer : BackgroundService
     protected override async Task ExecuteAsync(
         CancellationToken stoppingToken)
     {
-        await using var connection =
-            await _connectionFactory.CreateConnectionAsync(stoppingToken);
+        var connection =
+            await _connectionManager.GetConnectionAsync(stoppingToken);
 
         await using var channel =
             await connection.CreateChannelAsync(
@@ -114,6 +115,10 @@ public class LargeTransactionAlertConsumer : BackgroundService
                     deliveryTag: eventArgs.DeliveryTag,
                     multiple: false,
                     cancellationToken: stoppingToken);
+
+                _logger.LogInformation(
+                    "Large transaction alert message acknowledged. EventId: {EventId}",
+                    alertEvent.EventId);
             }
             catch (Exception ex)
             {
@@ -121,11 +126,20 @@ public class LargeTransactionAlertConsumer : BackgroundService
                     ex,
                     "Failed to process large-transaction-alert message.");
 
-                await channel.BasicNackAsync(
-                    deliveryTag: eventArgs.DeliveryTag,
-                    multiple: false,
-                    requeue: false,
-                    cancellationToken: stoppingToken);
+                try
+                {
+                    await channel.BasicNackAsync(
+                        deliveryTag: eventArgs.DeliveryTag,
+                        multiple: false,
+                        requeue: false,
+                        cancellationToken: CancellationToken.None);
+                }
+                catch (Exception nackException)
+                {
+                    _logger.LogError(
+                        nackException,
+                        "Failed to negatively acknowledge large transaction alert message.");
+                }
             }
         };
 
