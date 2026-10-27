@@ -132,6 +132,46 @@ public class AuthenticationService : IAuthenticationService
         };
     }
 
+    public async Task<LoginResponse> GoogleLoginAsync(string email)
+    {
+        var user = await _userRepository.GetByEmailAsync(email);
+
+        if (user is null)
+        {
+            throw new BankTask.Application.Exceptions.UnauthorizedException(
+                "AUTH_INVALID_CREDENTIALS");
+        }
+
+        var accessToken = _jwtService.GenerateToken(user);
+
+        var rawRefreshToken = GenerateRefreshToken();
+
+        var refreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = HashRefreshToken(rawRefreshToken),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            RevokedAt = null,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _refreshTokenRepository.CreateAsync(refreshToken);
+
+        await CreateAuditLogAsync(
+            action: "USER_LOGGED_IN_WITH_GOOGLE",
+            userId: user.Id,
+            entityId: user.Id,
+            newValues: null);
+
+        return new LoginResponse
+        {
+            AccessToken = accessToken,
+            RefreshToken = rawRefreshToken
+        };
+    }
+
+
     public async Task<LoginResponse> RefreshAsync(
         RefreshTokenRequest request)
     {

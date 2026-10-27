@@ -20,6 +20,9 @@ using BankTask.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
 using Hangfire.SqlServer;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -127,7 +130,7 @@ builder.Services
 
 builder.Services.AddScoped<IJwtService, JwtService>();
 
-// JWT Authentication
+// JWT Configuration
 
 var jwtSecretKey =
     builder.Configuration["Jwt:SecretKey"]
@@ -144,8 +147,18 @@ var jwtAudience =
     ?? throw new InvalidOperationException(
         "JWT audience not found.");
 
+// Authentication: JWT + External Cookie + Google
+
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(options =>
+    {
+        // Keep JWT as the default for API requests.
+        options.DefaultAuthenticateScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+
+        options.DefaultChallengeScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters =
@@ -187,6 +200,27 @@ builder.Services
                 return Task.CompletedTask;
             }
         };
+    })
+    .AddCookie("External")
+    .AddGoogle("Google", options =>
+    {
+        options.ClientId =
+            builder.Configuration[
+                "Authentication:Google:ClientId"]
+            ?? throw new InvalidOperationException(
+                "Google Client ID not found.");
+
+        options.ClientSecret =
+            builder.Configuration[
+                "Authentication:Google:ClientSecret"]
+            ?? throw new InvalidOperationException(
+                "Google Client Secret not found.");
+
+        options.SignInScheme = "External";
+        options.CallbackPath = "/signin-google";
+        options.ClaimActions.MapJsonKey(
+            "urn:google:email_verified",
+            "email_verified");
     });
 
 // Application Services
@@ -194,8 +228,8 @@ builder.Services
 builder.Services.AddScoped<IUserService, UserService>();
 
 builder.Services.AddScoped<
-    IAuthenticationService,
-    AuthenticationService>();
+    BankTask.Application.Interfaces.Services.IAuthenticationService,
+    BankTask.Application.Services.AuthenticationService>();
 
 builder.Services.AddHttpClient<
     IExchangeRateService,
