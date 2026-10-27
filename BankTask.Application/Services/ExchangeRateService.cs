@@ -1,4 +1,5 @@
 ﻿using System.Net.Http.Json;
+using BankTask.Application.Caching;
 using BankTask.Application.DTOs.ExchangeRates;
 using BankTask.Application.Interfaces.Services;
 using BankTask.Domain.Enums;
@@ -24,10 +25,9 @@ public class ExchangeRateService : IExchangeRateService
     {
         var fromCurrency = from.ToString().ToLowerInvariant();
         var toCurrency = to.ToString().ToLowerInvariant();
-        var cacheKey =
-            $"exchange-rate:{fromCurrency}:{toCurrency}"; var cachedRate =
-        await _cacheService.GetAsync<ExchangeRateResponse>(
-            cacheKey);
+        var cacheKey = CacheKeys.ExchangeRate(fromCurrency, toCurrency);
+        var cachedRate =
+            await _cacheService.GetAsync<ExchangeRateResponse>(cacheKey);
 
         if (cachedRate is not null)
         {

@@ -1,7 +1,9 @@
 
 using System.Text;
+using BankTask.Api.Consumers;
 using BankTask.Api.Filters;
 using BankTask.Api.Hubs;
+using BankTask.Api.Messaging;
 using BankTask.Api.Middleware;
 using BankTask.Api.Services;
 using BankTask.Api.WebSockets;
@@ -21,6 +23,7 @@ using Hangfire.SqlServer;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using RabbitMQ.Client;
 using Serilog;
 using Serilog.Sinks.Network;
 
@@ -56,12 +59,47 @@ builder.Services.AddHangfire(configuration =>
 
 builder.Services.AddHangfireServer();
 
-var connectionFactory = new ConnectionFactory(
-    sqlServerConnectionString,
-    postgreSqlConnectionString);
+// DBManager ConnectionFactory
 
-builder.Services.AddSingleton<IConnectionFactory>(
+var connectionFactory =
+    new BankTask.DBManager.ConnectionFactory(
+        sqlServerConnectionString,
+        postgreSqlConnectionString);
+
+builder.Services.AddSingleton<
+    BankTask.DBManager.IConnectionFactory>(
     connectionFactory);
+
+// RabbitMQ Configuration
+
+builder.Services.AddSingleton<
+    RabbitMQ.Client.ConnectionFactory>(_ =>
+    {
+        var rabbitMqSection =
+            builder.Configuration.GetSection("RabbitMQ");
+
+        return new RabbitMQ.Client.ConnectionFactory
+        {
+            HostName =
+                rabbitMqSection["HostName"] ?? "localhost",
+
+            Port =
+                rabbitMqSection.GetValue<int>("Port", 5672),
+
+            UserName =
+                rabbitMqSection["UserName"] ?? "guest",
+
+            Password =
+                rabbitMqSection["Password"] ?? "guest",
+
+            VirtualHost =
+                rabbitMqSection["VirtualHost"] ?? "/"
+        };
+    });
+
+// Shared long-lived RabbitMQ connection manager
+
+builder.Services.AddSingleton<RabbitMqConnectionManager>();
 
 // Repositories
 
@@ -130,8 +168,6 @@ builder.Services
                 ClockSkew = TimeSpan.Zero
             };
 
-        // Allow SignalR to receive the JWT through access_token
-        // for the transactions Hub endpoint only.
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -192,6 +228,17 @@ builder.Services.AddSingleton<
 builder.Services.AddScoped<
     ITransactionNotificationService,
     TransactionNotificationService>();
+
+// RabbitMQ Publisher and Consumers
+
+builder.Services.AddSingleton<
+    IRabbitMqPublisher,
+    RabbitMqPublisher>();
+
+builder.Services.AddHostedService<CacheInvalidationConsumer>();
+builder.Services.AddHostedService<TransactionCreatedConsumer>();
+builder.Services.AddHostedService<TransactionEmailConsumer>();
+builder.Services.AddHostedService<LargeTransactionAlertConsumer>();
 
 // Validation
 
@@ -316,7 +363,6 @@ app.Map("/ws/stocks", async context =>
 
 // SignalR endpoint
 
-// Serve the static test page from wwwroot (signalr test helper)
 app.UseStaticFiles();
 
 app.MapHub<TransactionsHub>("/hubs/transactions");

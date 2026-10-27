@@ -24,16 +24,71 @@ public class TransactionNotificationService
         Guid userId,
         TransactionNotificationDto notification)
     {
-        // Log the outgoing notification (GUID only, no sensitive data)
         _logger.LogInformation(
-            "Sending TransactionCreated notification to user {UserId} for transaction {TransactionId}",
+            "Sending SignalR event {SignalREventName} to user {UserId} for transaction {TransactionId}",
+            "TransactionCreated",
             userId,
             notification.TransactionId);
 
-        await _hubContext.Clients
-            .User(userId.ToString())
-            .SendAsync(
+        try
+        {
+            await _hubContext.Clients
+                .User(userId.ToString())
+                .SendAsync(
+                    "TransactionCreated",
+                    notification);
+
+            _logger.LogInformation(
+                "SignalR event {SignalREventName} send completed for user {UserId}, transaction {TransactionId}",
                 "TransactionCreated",
-                notification);
+                userId,
+                notification.TransactionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "SignalR event {SignalREventName} send failed for user {UserId}, transaction {TransactionId}",
+                "TransactionCreated",
+                userId,
+                notification.TransactionId);
+            throw;
+        }
+    }
+
+    public async Task NotifyLargeTransactionAlertAsync(
+        Guid userId,
+        TransactionNotificationDto notification)
+    {
+        _logger.LogInformation(
+            "Sending SignalR event {SignalREventName} to user {UserId} for transaction {TransactionId}",
+            "LargeTransactionAlert",
+            userId,
+            notification.TransactionId);
+
+        try
+        {
+            await _hubContext.Clients
+                .User(userId.ToString())
+                .SendAsync(
+                    "LargeTransactionAlert",
+                    notification);
+
+            _logger.LogInformation(
+                "SignalR event {SignalREventName} send completed for user {UserId}, transaction {TransactionId}",
+                "LargeTransactionAlert",
+                userId,
+                notification.TransactionId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "SignalR event {SignalREventName} send failed for user {UserId}, transaction {TransactionId}",
+                "LargeTransactionAlert",
+                userId,
+                notification.TransactionId);
+            throw;
+        }
     }
 }
