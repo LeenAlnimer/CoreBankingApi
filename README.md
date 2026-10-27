@@ -32,6 +32,8 @@ The application is planned to support the following features:
 - Hangfire for Email  Service and  UserCount
 - Redis Cache
 - ELK (ElasticSearch, LogStash , Kibana)
+- Manual WebSocket
+- SignalR
 - RabbitMQ 
 - API documentation through Swagger/OpenAPI
 
