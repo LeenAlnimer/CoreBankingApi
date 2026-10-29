@@ -1,8 +1,10 @@
-﻿using System.Security.Cryptography;
+﻿
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using BankTask.Application.DTOs.Authentication;
 using BankTask.Application.DTOs.Users;
+using BankTask.Application.Interfaces;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Security;
 using BankTask.Application.Interfaces.Services;
@@ -15,6 +17,8 @@ public class AuthenticationService : IAuthenticationService
 {
     private readonly IUserRepository _userRepository;
     private readonly IRefreshTokenRepository _refreshTokenRepository;
+    private readonly IGoogleOAuthTokenRepository _googleOAuthTokenRepository;
+    private readonly IGoogleTokenProtector _googleTokenProtector;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtService _jwtService;
     private readonly IAuditLogRepository _auditLogRepository;
@@ -24,6 +28,8 @@ public class AuthenticationService : IAuthenticationService
     public AuthenticationService(
         IUserRepository userRepository,
         IRefreshTokenRepository refreshTokenRepository,
+        IGoogleOAuthTokenRepository googleOAuthTokenRepository,
+        IGoogleTokenProtector googleTokenProtector,
         IPasswordHasher passwordHasher,
         IJwtService jwtService,
         IAuditLogRepository auditLogRepository,
@@ -32,6 +38,8 @@ public class AuthenticationService : IAuthenticationService
     {
         _userRepository = userRepository;
         _refreshTokenRepository = refreshTokenRepository;
+        _googleOAuthTokenRepository = googleOAuthTokenRepository;
+        _googleTokenProtector = googleTokenProtector;
         _passwordHasher = passwordHasher;
         _jwtService = jwtService;
         _auditLogRepository = auditLogRepository;
@@ -104,7 +112,6 @@ public class AuthenticationService : IAuthenticationService
         }
 
         var accessToken = _jwtService.GenerateToken(user);
-
         var rawRefreshToken = GenerateRefreshToken();
 
         var refreshToken = new RefreshToken
@@ -132,6 +139,8 @@ public class AuthenticationService : IAuthenticationService
         };
     }
 
+    // Existing Google login flow.
+    // Kept for compatibility with existing callers.
     public async Task<LoginResponse> GoogleLoginAsync(string email)
     {
         var user = await _userRepository.GetByEmailAsync(email);
@@ -142,35 +151,72 @@ public class AuthenticationService : IAuthenticationService
                 "AUTH_INVALID_CREDENTIALS");
         }
 
-        var accessToken = _jwtService.GenerateToken(user);
-
-        var rawRefreshToken = GenerateRefreshToken();
-
-        var refreshToken = new RefreshToken
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            TokenHash = HashRefreshToken(rawRefreshToken),
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
-            RevokedAt = null,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        await _refreshTokenRepository.CreateAsync(refreshToken);
-
-        await CreateAuditLogAsync(
-            action: "USER_LOGGED_IN_WITH_GOOGLE",
-            userId: user.Id,
-            entityId: user.Id,
-            newValues: null);
-
-        return new LoginResponse
-        {
-            AccessToken = accessToken,
-            RefreshToken = rawRefreshToken
-        };
+        return await CreateLoginResponseAsync(
+            user,
+            "USER_LOGGED_IN_WITH_GOOGLE");
     }
 
+    // Google login flow that also saves encrypted Google tokens.
+    public async Task<LoginResponse> GoogleLoginAsync(
+        string email,
+        string googleAccessToken,
+        string? googleRefreshToken,
+        DateTime accessTokenExpiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(googleAccessToken))
+        {
+            throw new BankTask.Application.Exceptions.UnauthorizedException(
+                "GOOGLE_ACCESS_TOKEN_MISSING");
+        }
+
+        var user = await _userRepository.GetByEmailAsync(email);
+
+        if (user is null)
+        {
+            throw new BankTask.Application.Exceptions.UnauthorizedException(
+                "AUTH_INVALID_CREDENTIALS");
+        }
+
+        var existingToken =
+            await _googleOAuthTokenRepository.GetByUserIdAsync(user.Id);
+
+        var now = DateTime.UtcNow;
+
+        var googleToken = new GoogleOAuthToken
+        {
+            Id = existingToken?.Id ?? Guid.NewGuid(),
+            UserId = user.Id,
+
+            GoogleAccessTokenEncrypted =
+                _googleTokenProtector.Protect(googleAccessToken),
+
+            GoogleRefreshTokenEncrypted =
+                string.IsNullOrWhiteSpace(googleRefreshToken)
+                    ? null
+                    : _googleTokenProtector.Protect(googleRefreshToken),
+
+            AccessTokenExpiresAt =
+                accessTokenExpiresAt.Kind == DateTimeKind.Utc
+                    ? accessTokenExpiresAt
+                    : accessTokenExpiresAt.ToUniversalTime(),
+
+            CreatedAt = existingToken?.CreatedAt ?? now,
+            UpdatedAt = existingToken is null ? null : now
+        };
+
+        if (existingToken is null)
+        {
+            await _googleOAuthTokenRepository.SaveAsync(googleToken);
+        }
+        else
+        {
+            await _googleOAuthTokenRepository.UpdateAsync(googleToken);
+        }
+
+        return await CreateLoginResponseAsync(
+            user,
+            "USER_LOGGED_IN_WITH_GOOGLE");
+    }
 
     public async Task<LoginResponse> RefreshAsync(
         RefreshTokenRequest request)
@@ -211,8 +257,7 @@ public class AuthenticationService : IAuthenticationService
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            TokenHash = HashRefreshToken(
-                rawNewRefreshToken),
+            TokenHash = HashRefreshToken(rawNewRefreshToken),
             ExpiresAt = DateTime.UtcNow.AddDays(7),
             RevokedAt = null,
             CreatedAt = DateTime.UtcNow
@@ -225,6 +270,38 @@ public class AuthenticationService : IAuthenticationService
         {
             AccessToken = newAccessToken,
             RefreshToken = rawNewRefreshToken
+        };
+    }
+
+    private async Task<LoginResponse> CreateLoginResponseAsync(
+        User user,
+        string auditAction)
+    {
+        var accessToken = _jwtService.GenerateToken(user);
+        var rawRefreshToken = GenerateRefreshToken();
+
+        var refreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = HashRefreshToken(rawRefreshToken),
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            RevokedAt = null,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        await _refreshTokenRepository.CreateAsync(refreshToken);
+
+        await CreateAuditLogAsync(
+            action: auditAction,
+            userId: user.Id,
+            entityId: user.Id,
+            newValues: null);
+
+        return new LoginResponse
+        {
+            AccessToken = accessToken,
+            RefreshToken = rawRefreshToken
         };
     }
 

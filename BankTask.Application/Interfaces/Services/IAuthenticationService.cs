@@ -10,8 +10,14 @@ public interface IAuthenticationService
 
     Task<LoginResponse> LoginAsync(LoginRequest request);
 
+    Task<LoginResponse> GoogleLoginAsync(string email);
+
+    Task<LoginResponse> GoogleLoginAsync(
+        string email,
+        string googleAccessToken,
+        string? googleRefreshToken,
+        DateTime accessTokenExpiresAt);
+
     Task<LoginResponse> RefreshAsync(
         RefreshTokenRequest request);
-
-    Task<LoginResponse> GoogleLoginAsync(string email);
 }

@@ -7,6 +7,7 @@ using BankTask.Api.Messaging;
 using BankTask.Api.Middleware;
 using BankTask.Api.Services;
 using BankTask.Api.WebSockets;
+using BankTask.Application.Interfaces;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Security;
 using BankTask.Application.Interfaces.Services;
@@ -16,6 +17,7 @@ using BankTask.Authentication;
 using BankTask.DBManager;
 using BankTask.Infrastructure.Jobs;
 using BankTask.Infrastructure.Repositories;
+using BankTask.Infrastructure.Security;
 using BankTask.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
@@ -111,12 +113,28 @@ builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+
+builder.Services.AddScoped<
+    IGoogleOAuthTokenRepository,
+    GoogleOAuthTokenRepository>();
+
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
+
+builder.Services.AddScoped<
+    IBackgroundJobService,
+    HangfireBackgroundJobService>();
 
 // Security
 
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+
+// Google OAuth token protection
+
+builder.Services.AddDataProtection();
+
+builder.Services.AddScoped<
+    IGoogleTokenProtector,
+    GoogleTokenProtector>();
 
 // JWT Options
 
@@ -218,6 +236,17 @@ builder.Services
 
         options.SignInScheme = "External";
         options.CallbackPath = "/signin-google";
+
+        // Save Google's tokens in the temporary External ticket.
+        options.SaveTokens = true;
+
+        // Request offline access so Google can issue a refresh token.
+        options.AccessType = "offline";
+
+        // Request permission to read Google Calendar events.
+        options.Scope.Add(
+            "https://www.googleapis.com/auth/calendar.events.readonly");
+
         options.ClaimActions.MapJsonKey(
             "urn:google:email_verified",
             "email_verified");
@@ -244,6 +273,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAuditLogService,
     AuditLogService>();
+builder.Services.AddHttpClient<
+    IGoogleCalendarService,
+    GoogleCalendarService>();
+// Redis Cache
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
