@@ -7,6 +7,7 @@ using BankTask.Api.Messaging;
 using BankTask.Api.Middleware;
 using BankTask.Api.Services;
 using BankTask.Api.WebSockets;
+using BankTask.Application.Interfaces;
 using BankTask.Application.Interfaces.Repositories;
 using BankTask.Application.Interfaces.Security;
 using BankTask.Application.Interfaces.Services;
@@ -16,10 +17,14 @@ using BankTask.Authentication;
 using BankTask.DBManager;
 using BankTask.Infrastructure.Jobs;
 using BankTask.Infrastructure.Repositories;
+using BankTask.Infrastructure.Security;
 using BankTask.Infrastructure.Services;
 using FluentValidation;
 using Hangfire;
 using Hangfire.SqlServer;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -108,12 +113,28 @@ builder.Services.AddScoped<IAccountRepository, AccountRepository>();
 builder.Services.AddScoped<ITransactionRepository, TransactionRepository>();
 builder.Services.AddScoped<IAuditLogRepository, AuditLogRepository>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+
+builder.Services.AddScoped<
+    IGoogleOAuthTokenRepository,
+    GoogleOAuthTokenRepository>();
+
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<IBackgroundJobService, HangfireBackgroundJobService>();
+
+builder.Services.AddScoped<
+    IBackgroundJobService,
+    HangfireBackgroundJobService>();
 
 // Security
 
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
+
+// Google OAuth token protection
+
+builder.Services.AddDataProtection();
+
+builder.Services.AddScoped<
+    IGoogleTokenProtector,
+    GoogleTokenProtector>();
 
 // JWT Options
 
@@ -127,7 +148,7 @@ builder.Services
 
 builder.Services.AddScoped<IJwtService, JwtService>();
 
-// JWT Authentication
+// JWT Configuration
 
 var jwtSecretKey =
     builder.Configuration["Jwt:SecretKey"]
@@ -144,8 +165,18 @@ var jwtAudience =
     ?? throw new InvalidOperationException(
         "JWT audience not found.");
 
+// Authentication: JWT + External Cookie + Google
+
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddAuthentication(options =>
+    {
+        // Keep JWT as the default for API requests.
+        options.DefaultAuthenticateScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+
+        options.DefaultChallengeScheme =
+            JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters =
@@ -187,6 +218,38 @@ builder.Services
                 return Task.CompletedTask;
             }
         };
+    })
+    .AddCookie("External")
+    .AddGoogle("Google", options =>
+    {
+        options.ClientId =
+            builder.Configuration[
+                "Authentication:Google:ClientId"]
+            ?? throw new InvalidOperationException(
+                "Google Client ID not found.");
+
+        options.ClientSecret =
+            builder.Configuration[
+                "Authentication:Google:ClientSecret"]
+            ?? throw new InvalidOperationException(
+                "Google Client Secret not found.");
+
+        options.SignInScheme = "External";
+        options.CallbackPath = "/signin-google";
+
+        // Save Google's tokens in the temporary External ticket.
+        options.SaveTokens = true;
+
+        // Request offline access so Google can issue a refresh token.
+        options.AccessType = "offline";
+
+        // Request permission to read Google Calendar events.
+        options.Scope.Add(
+            "https://www.googleapis.com/auth/calendar.events.readonly");
+
+        options.ClaimActions.MapJsonKey(
+            "urn:google:email_verified",
+            "email_verified");
     });
 
 // Application Services
@@ -194,8 +257,8 @@ builder.Services
 builder.Services.AddScoped<IUserService, UserService>();
 
 builder.Services.AddScoped<
-    IAuthenticationService,
-    AuthenticationService>();
+    BankTask.Application.Interfaces.Services.IAuthenticationService,
+    BankTask.Application.Services.AuthenticationService>();
 
 builder.Services.AddHttpClient<
     IExchangeRateService,
@@ -210,6 +273,10 @@ builder.Services.AddScoped<
 builder.Services.AddScoped<
     IAuditLogService,
     AuditLogService>();
+builder.Services.AddHttpClient<
+    IGoogleCalendarService,
+    GoogleCalendarService>();
+// Redis Cache
 
 builder.Services.AddStackExchangeRedisCache(options =>
 {
