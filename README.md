@@ -34,7 +34,8 @@ The application is planned to support the following features:
 - ELK (ElasticSearch, LogStash , Kibana)
 - Manual WebSocket
 - SignalR
-- RabbitMQ 
+- RabbitMQ
+- OAuth 
 - API documentation through Swagger/OpenAPI
 
 ---
